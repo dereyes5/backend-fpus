@@ -1,16 +1,36 @@
 {
-  "name": "backend",
+  "name": "backend-benefactores",
   "version": "1.0.0",
-  "description": "",
+  "description": "API REST para gestión de benefactores con autenticación JWT",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "dev": "nodemon index.js",
+    "init:passwords": "node scripts/init-passwords.js",
+    "test:connection": "node scripts/test-connection.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": [
+    "api",
+    "rest",
+    "benefactores",
+    "jwt",
+    "postgresql"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^5.2.1"
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "express-validator": "^7.3.1",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
   }
 }
+  
+
