@@ -1,7 +1,6 @@
 # API de Gestión de Benefactores
 
 API REST completa para la gestión de benefactores con autenticación JWT, control de roles y aprobación de registros.
-URL DEL PROYECTO(SSH): git@github.com:dereyes5/backend-fpus.git
 
 ## 🚀 Características
 
@@ -35,10 +34,10 @@ npm install
 3. Configurar variables de entorno en `.env`:
 ```env
 # Database Configuration
-DB_HOST=154.12.234.100
+DB_HOST=tu_servidor_db
 DB_PORT=5432
-DB_USER=david
-DB_PASSWORD=tu_password
+DB_USER=tu_usuario_db
+DB_PASSWORD=tu_password_db
 DB_NAME=nombre_db
 
 # JWT Configuration
@@ -671,7 +670,7 @@ sudo apt install -y git
 cd /opt
 
 # Clonar repositorio usando HTTPS
-git clone https://github.com/dereyes5/backend-fpus.git backend
+git clone https://github.com/tu-usuario/tu-repositorio.git backend
 
 # Entrar al directorio
 cd backend
@@ -701,7 +700,7 @@ Finalmente, clona el repositorio:
 cd /opt
 
 # Clonar repositorio usando SSH
-git clone git@github.com:dereyes5/backend-fpus.git backend
+git clone git@github.com:tu-usuario/tu-repositorio.git backend
 
 # Entrar al directorio
 cd backend
@@ -716,11 +715,11 @@ nano .env
 Contenido del .env:
 ```env
 # Database Configuration
-DB_HOST=154.12.234.100
+DB_HOST=tu_servidor_db
 DB_PORT=5432
-DB_USER=david
-DB_PASSWORD=
-DB_NAME=softwarefpus
+DB_USER=tu_usuario_db
+DB_PASSWORD=tu_password_db
+DB_NAME=nombre_db
 
 # JWT Configuration
 JWT_SECRET=tu_clave_secreta_super_segura_cambiar_en_produccion
@@ -759,7 +758,7 @@ pm2 startup
 Ve a tu repositorio en GitHub → Settings → Secrets and variables → Actions
 
 Agrega los siguientes secrets:
-- `SERVER_HOST`: IP o dominio de tu servidor (ej: 154.12.234.100)
+- `SERVER_HOST`: IP o dominio de tu servidor (ej: 192.168.1.100)
 - `SERVER_USER`: Usuario SSH (ej: root o ubuntu)
 - `SSH_PRIVATE_KEY`: Tu clave privada SSH
 
