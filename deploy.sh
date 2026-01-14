@@ -17,6 +17,12 @@ git pull origin main
 echo "📦 Instalando dependencias..."
 npm install --production
 
+# Copiar archivo de permisos si no existe
+if [ ! -f "src/config/permisos.json" ]; then
+  echo "🔑 Creando archivo de permisos inicial..."
+  cp src/config/permisos.example.json src/config/permisos.json
+fi
+
 # Reiniciar la aplicación
 echo "🔄 Reiniciando aplicación..."
 pm2 restart api-benefactores || pm2 start ecosystem.config.js

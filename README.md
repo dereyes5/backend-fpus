@@ -834,6 +834,9 @@ NODE_ENV=production
 # Instalar dependencias
 npm install --production
 
+# Copiar archivo de permisos si no existe
+cp src/config/permisos.example.json src/config/permisos.json
+
 # Dar permisos de ejecución al script de deployment
 chmod +x deploy.sh
 

@@ -1,0 +1,42 @@
+{
+  "recursos": [
+    {
+      "id": "benefactores",
+      "nombre": "Benefactores",
+      "descripcion": "Gestión de benefactores y dependientes"
+    },
+    {
+      "id": "aprobaciones",
+      "nombre": "Aprobaciones",
+      "descripcion": "Aprobación y rechazo de registros"
+    },
+    {
+      "id": "cobros",
+      "nombre": "Cobros y Pagos",
+      "descripcion": "Sistema de cobros y saldos"
+    },
+    {
+      "id": "usuarios",
+      "nombre": "Usuarios",
+      "descripcion": "Gestión de usuarios del sistema"
+    },
+    {
+      "id": "roles",
+      "nombre": "Roles",
+      "descripcion": "Gestión de roles y permisos"
+    }
+  ],
+  "permisos_por_rol": {
+    "1": {
+      "id_rol": 1,
+      "nombre": "EJECUTIVO",
+      "permisos": {
+        "benefactores": { "ver": true, "editar": true },
+        "aprobaciones": { "ver": true, "editar": true },
+        "cobros": { "ver": true, "editar": true },
+        "usuarios": { "ver": false, "editar": false },
+        "roles": { "ver": false, "editar": false }
+      }
+    }
+  }
+}
