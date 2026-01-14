@@ -643,6 +643,266 @@ Respuesta:
 - `404`: Recurso no encontrado
 - `500`: Error interno del servidor
 
-## 📞 Soporte
+## � Despliegue en Producción
+
+### Configuración Inicial del Servidor
+
+#### 1. Requisitos del Servidor
+```bash
+# Actualizar sistema
+sudo apt update && sudo apt upgrade -y
+
+# Instalar Node.js (v18 LTS)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Instalar PM2 globalmente
+sudo npm install -g pm2
+
+# Instalar Git
+sudo apt install -y git
+```
+
+#### 2. Clonar el Repositorio
+
+**Opción A: Usando HTTPS (Más fácil)**
+```bash
+# Navegar al directorio deseado
+cd /opt
+
+# Clonar repositorio usando HTTPS
+git clone https://github.com/dereyes5/backend-fpus.git backend
+
+# Entrar al directorio
+cd backend
+```
+
+**Opción B: Usando SSH (Requiere configuración)**
+
+Primero, configura SSH en tu servidor:
+```bash
+# Generar clave SSH
+ssh-keygen -t ed25519 -C "tu-email@example.com"
+# Presiona Enter para usar ubicación por defecto
+# Presiona Enter para no usar passphrase (o crea una segura)
+
+# Ver tu clave pública
+cat ~/.ssh/id_ed25519.pub
+```
+
+Luego, agrega la clave a GitHub:
+1. Copia la clave pública que se muestra
+2. Ve a GitHub → Settings → SSH and GPG keys → New SSH key
+3. Pega la clave y guárdala
+
+Finalmente, clona el repositorio:
+```bash
+# Navegar al directorio deseado
+cd /opt
+
+# Clonar repositorio usando SSH
+git clone git@github.com:dereyes5/backend-fpus.git backend
+
+# Entrar al directorio
+cd backend
+```
+
+#### 3. Configurar Variables de Entorno
+```bash
+# Crear archivo .env
+nano .env
+```
+
+Contenido del .env:
+```env
+# Database Configuration
+DB_HOST=154.12.234.100
+DB_PORT=5432
+DB_USER=david
+DB_PASSWORD=
+DB_NAME=softwarefpus
+
+# JWT Configuration
+JWT_SECRET=tu_clave_secreta_super_segura_cambiar_en_produccion
+JWT_EXPIRES_IN=24h
+
+# Server Configuration
+PORT=3000
+NODE_ENV=production
+```
+
+#### 4. Instalar Dependencias e Iniciar
+```bash
+# Instalar dependencias
+npm install --production
+
+# Dar permisos de ejecución al script de deployment
+chmod +x deploy.sh
+
+# Crear directorio de logs
+mkdir -p logs
+
+# Iniciar con PM2
+pm2 start ecosystem.config.js
+
+# Guardar configuración de PM2
+pm2 save
+
+# Configurar PM2 para iniciar en boot
+pm2 startup
+# Copiar y ejecutar el comando que PM2 te muestra
+```
+
+### Deployment Automático con GitHub Actions
+
+#### 1. Configurar Secrets en GitHub
+Ve a tu repositorio en GitHub → Settings → Secrets and variables → Actions
+
+Agrega los siguientes secrets:
+- `SERVER_HOST`: IP o dominio de tu servidor (ej: 154.12.234.100)
+- `SERVER_USER`: Usuario SSH (ej: root o ubuntu)
+- `SSH_PRIVATE_KEY`: Tu clave privada SSH
+
+#### 2. Generar y Configurar SSH Key para Deployment
+**Nota: Esta es una clave diferente a la que usaste para clonar el repo**
+
+En tu servidor:
+```bash
+# Generar nueva clave SSH para deployment (sin passphrase)
+ssh-keygen -t rsa -b 4096 -C "deploy@server" -f ~/.ssh/deploy_key -N ""
+
+# Ver la clave pública (agregar a GitHub deploy keys si es necesario)
+cat ~/.ssh/deploy_key.pub
+
+# Ver clave privada (copiar TODO el contenido para GitHub Secrets)
+cat ~/.ssh/deploy_key
+```
+
+Copia TODO el contenido de la clave privada (incluyendo `-----BEGIN` y `-----END`) y úsalo como valor del secret `SSH_PRIVATE_KEY` en GitHub.
+
+#### 3. Actualizar Path en deploy.yml
+Edita `.github/workflows/deploy.yml` y cambia:
+```yaml
+script: |
+  cd /opt/backend  # <-- Tu path real
+  bash deploy.sh
+```
+
+#### 4. Deployment Manual (Alternativa sin GitHub Actions)
+Si no usas GitHub Actions, puedes hacer deployment manual:
+```bash
+# En el servidor
+cd /opt/backend
+bash deploy.sh
+```
+
+### Comandos Útiles de PM2
+
+```bash
+# Ver status de la aplicación
+pm2 status
+
+# Ver logs en tiempo real
+pm2 logs api-benefactores
+
+# Reiniciar aplicación
+pm2 restart api-benefactores
+
+# Detener aplicación
+pm2 stop api-benefactores
+
+# Ver información detallada
+pm2 info api-benefactores
+
+# Monitoreo
+pm2 monit
+```
+
+### Configurar Firewall
+
+```bash
+# Permitir puerto de la aplicación
+sudo ufw allow 3000/tcp
+
+# Si usas Nginx como reverse proxy
+sudo ufw allow 'Nginx Full'
+
+# Habilitar firewall
+sudo ufw enable
+```
+
+### Configurar Nginx como Reverse Proxy (Opcional)
+
+```bash
+# Instalar Nginx
+sudo apt install nginx -y
+
+# Crear configuración
+sudo nano /etc/nginx/sites-available/api-benefactores
+```
+
+Contenido:
+```nginx
+server {
+    listen 80;
+    server_name tu-dominio.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+```bash
+# Habilitar sitio
+sudo ln -s /etc/nginx/sites-available/api-benefactores /etc/nginx/sites-enabled/
+
+# Verificar configuración
+sudo nginx -t
+
+# Reiniciar Nginx
+sudo systemctl restart nginx
+```
+
+### Workflow de Deployment Automático
+
+1. **Haces cambios localmente** → Commit y push a GitHub
+   ```bash
+   git add .
+   git commit -m "Descripción del cambio"
+   git push origin main
+   ```
+
+2. **GitHub Actions se activa automáticamente** → Ejecuta deployment en servidor
+
+3. **El servidor ejecuta deploy.sh** que:
+   - Detiene la aplicación
+   - Descarga los cambios
+   - Instala nuevas dependencias
+   - Reinicia la aplicación
+
+4. **Aplicación actualizada** en producción sin downtime
+
+### Verificar Deployment
+
+```bash
+# Verificar que la app está corriendo
+curl http://localhost:3000
+
+# Ver logs recientes
+pm2 logs api-benefactores --lines 50
+
+# Verificar estado
+pm2 status
+```
+
+## �📞 Soporte
 
 Para cualquier consulta o problema, contacta al equipo de desarrollo.
