@@ -214,6 +214,105 @@ DELETE /api/roles/:id
 Authorization: Bearer {token}
 ```
 
+### Permisos
+
+#### Obtener Recursos Disponibles
+```http
+GET /api/permisos/recursos
+Authorization: Bearer {token}
+```
+
+Respuesta:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "benefactores",
+      "nombre": "Benefactores",
+      "descripcion": "Gestión de benefactores y dependientes"
+    },
+    {
+      "id": "cobros",
+      "nombre": "Cobros y Pagos",
+      "descripcion": "Sistema de cobros y saldos"
+    }
+  ]
+}
+```
+
+#### Obtener Mis Permisos (Usuario Actual)
+```http
+GET /api/permisos/mis-permisos
+Authorization: Bearer {token}
+```
+
+Respuesta:
+```json
+{
+  "success": true,
+  "data": {
+    "rol": {
+      "id_rol": 1,
+      "nombre": "EJECUTIVO"
+    },
+    "permisos": {
+      "benefactores": { "ver": true, "editar": true },
+      "aprobaciones": { "ver": true, "editar": true },
+      "cobros": { "ver": true, "editar": false }
+    },
+    "recursos": [...]
+  }
+}
+```
+
+#### Obtener Todos los Permisos
+```http
+GET /api/permisos
+Authorization: Bearer {token}
+```
+
+#### Obtener Permisos de un Rol
+```http
+GET /api/permisos/roles/:id
+Authorization: Bearer {token}
+```
+
+Respuesta:
+```json
+{
+  "success": true,
+  "data": {
+    "id_rol": 1,
+    "nombre": "EJECUTIVO",
+    "permisos": {
+      "benefactores": { "ver": true, "editar": true },
+      "aprobaciones": { "ver": true, "editar": true },
+      "cobros": { "ver": true, "editar": true },
+      "usuarios": { "ver": false, "editar": false },
+      "roles": { "ver": false, "editar": false }
+    }
+  }
+}
+```
+
+#### Actualizar Permisos de un Rol
+```http
+PUT /api/permisos/roles/:id
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "permisos": {
+    "benefactores": { "ver": true, "editar": true },
+    "aprobaciones": { "ver": true, "editar": false },
+    "cobros": { "ver": true, "editar": false },
+    "usuarios": { "ver": false, "editar": false },
+    "roles": { "ver": false, "editar": false }
+  }
+}
+```
+
 ### Benefactores
 
 #### Listar Benefactores
