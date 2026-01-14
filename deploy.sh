@@ -9,9 +9,16 @@ echo "🚀 Iniciando deployment..."
 echo "⏹️  Deteniendo aplicación..."
 pm2 stop api-benefactores || true
 
+# Guardar cambios locales temporalmente
+echo "💾 Guardando cambios locales..."
+git stash
+
 # Obtener últimos cambios
 echo "📥 Descargando cambios..."
 git pull origin main
+
+# Restaurar cambios locales si existían
+git stash pop || true
 
 # Instalar dependencias
 echo "📦 Instalando dependencias..."
