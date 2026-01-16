@@ -3,7 +3,13 @@ require('dotenv').config();
 
 const verificarToken = (req, res, next) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
+    // Intentar obtener token del header Authorization o de query params
+    let token = req.headers.authorization?.split(' ')[1];
+    
+    // Si no está en el header, buscar en query params (para peticiones GET directas)
+    if (!token && req.query.token) {
+      token = req.query.token;
+    }
     
     if (!token) {
       return res.status(401).json({
