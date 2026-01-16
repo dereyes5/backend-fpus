@@ -1,4 +1,6 @@
 const pool = require('../config/database');
+const path = require('path');
+const fs = require('fs');
 
 const obtenerBenefactores = async (req, res) => {
   const client = await pool.connect();
@@ -483,6 +485,121 @@ const obtenerDependientes = async (req, res) => {
   }
 };
 
+// Controlador para subir contrato PDF
+const subirContrato = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se proporcionó ningún archivo',
+      });
+    }
+
+    // Verificar que el benefactor existe
+    const benefactorResult = await pool.query(
+      'SELECT id_benefactor FROM benefactores WHERE id_benefactor = $1',
+      [id]
+    );
+
+    if (benefactorResult.rows.length === 0) {
+      // Eliminar el archivo subido si el benefactor no existe
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({
+        success: false,
+        message: 'Benefactor no encontrado',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Contrato subido exitosamente',
+      data: {
+        filename: req.file.filename,
+        path: `/api/benefactores/${id}/contrato`,
+      },
+    });
+  } catch (error) {
+    console.error('Error al subir contrato:', error);
+    // Eliminar archivo si hubo error
+    if (req.file) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({
+      success: false,
+      message: 'Error al subir contrato',
+      error: error.message,
+    });
+  }
+};
+
+// Controlador para obtener/descargar contrato PDF
+const obtenerContrato = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Buscar archivo con cualquier extensión (aunque solo permitimos PDF)
+    const uploadPath = path.join(__dirname, '../../uploads/contratos');
+    const files = fs.readdirSync(uploadPath);
+    const contratoFile = files.find(file => file.startsWith(`contrato-${id}`));
+
+    if (!contratoFile) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontró el contrato para este benefactor',
+      });
+    }
+
+    const filePath = path.join(uploadPath, contratoFile);
+    
+    // Enviar el archivo
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${contratoFile}"`);
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error('Error al obtener contrato:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener contrato',
+      error: error.message,
+    });
+  }
+};
+
+// Controlador para eliminar contrato PDF
+const eliminarContrato = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const uploadPath = path.join(__dirname, '../../uploads/contratos');
+    const files = fs.readdirSync(uploadPath);
+    const contratoFile = files.find(file => file.startsWith(`contrato-${id}`));
+
+    if (!contratoFile) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontró el contrato para este benefactor',
+      });
+    }
+
+    const filePath = path.join(uploadPath, contratoFile);
+    fs.unlinkSync(filePath);
+
+    res.json({
+      success: true,
+      message: 'Contrato eliminado exitosamente',
+    });
+  } catch (error) {
+    console.error('Error al eliminar contrato:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al eliminar contrato',
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   obtenerBenefactores,
   obtenerBenefactorPorId,
@@ -491,4 +608,7 @@ module.exports = {
   eliminarBenefactor,
   asignarDependiente,
   obtenerDependientes,
+  subirContrato,
+  obtenerContrato,
+  eliminarContrato,
 };

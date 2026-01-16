@@ -1,0 +1,13 @@
+# Ignorar todos los archivos en uploads
+*
+
+# Excepto los archivos .gitignore y .gitkeep
+!.gitignore
+!.gitkeep
+
+# Excepto las subcarpetas (para mantener estructura)
+!*/
+
+# Pero ignorar todo dentro de las subcarpetas
+contratos/*
+!contratos/.gitkeep
