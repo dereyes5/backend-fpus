@@ -1,0 +1,136 @@
+{
+  "roles": {
+    "EJECUTIVO": {
+      "id_rol": 1,
+      "nombre": "EJECUTIVO",
+      "descripcion": "Puede gestionar benefactores (crear, editar, ver)",
+      "permisos": {
+        "dashboard": {
+          "ver": true
+        },
+        "benefactores": {
+          "ver": true,
+          "crear": true,
+          "editar": true,
+          "eliminar": false
+        },
+        "aprobaciones": {
+          "ver": false
+        },
+        "cartera": {
+          "ver": false
+        },
+        "social": {
+          "ver": false
+        },
+        "configuracion": {
+          "ver": true,
+          "editar": false
+        }
+      },
+      "paginas_acceso": ["/", "/benefactores", "/configuracion"]
+    },
+    "ADMINISTRADOR": {
+      "id_rol": 2,
+      "nombre": "ADMINISTRADOR",
+      "descripcion": "Acceso completo con capacidad de aprobar y configurar",
+      "permisos": {
+        "dashboard": {
+          "ver": true
+        },
+        "benefactores": {
+          "ver": true,
+          "crear": false,
+          "editar": false,
+          "eliminar": false
+        },
+        "aprobaciones": {
+          "ver": true,
+          "aprobar": true,
+          "rechazar": true
+        },
+        "cartera": {
+          "ver": true,
+          "crear": false,
+          "editar": false
+        },
+        "social": {
+          "ver": true,
+          "crear": false,
+          "editar": false
+        },
+        "configuracion": {
+          "ver": true,
+          "editar": true,
+          "editar_roles": true,
+          "cambiar_password": true
+        }
+      },
+      "paginas_acceso": ["/", "/benefactores", "/aprobaciones", "/cartera", "/social", "/configuracion"]
+    },
+    "EJECUTIVO_SOCIAL": {
+      "id_rol": 3,
+      "nombre": "EJECUTIVO_SOCIAL",
+      "descripcion": "Puede gestionar casos sociales",
+      "permisos": {
+        "dashboard": {
+          "ver": true
+        },
+        "benefactores": {
+          "ver": false
+        },
+        "aprobaciones": {
+          "ver": false
+        },
+        "cartera": {
+          "ver": false
+        },
+        "social": {
+          "ver": true,
+          "crear": true,
+          "editar": true,
+          "eliminar": false
+        },
+        "configuracion": {
+          "ver": true,
+          "editar": false
+        }
+      },
+      "paginas_acceso": ["/", "/social", "/configuracion"]
+    },
+    "EJECUTIVO_CONTABLE": {
+      "id_rol": 4,
+      "nombre": "EJECUTIVO_CONTABLE",
+      "descripcion": "Puede gestionar cartera y cobros",
+      "permisos": {
+        "dashboard": {
+          "ver": true
+        },
+        "benefactores": {
+          "ver": false
+        },
+        "aprobaciones": {
+          "ver": false
+        },
+        "cartera": {
+          "ver": true,
+          "crear": true,
+          "editar": true,
+          "eliminar": false
+        },
+        "social": {
+          "ver": false
+        },
+        "configuracion": {
+          "ver": true,
+          "editar": false
+        }
+      },
+      "paginas_acceso": ["/", "/cartera", "/configuracion"]
+    }
+  },
+  "config": {
+    "permite_multiples_roles": true,
+    "rol_default": "EJECUTIVO"
+  }
+}
