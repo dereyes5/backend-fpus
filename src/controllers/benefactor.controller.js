@@ -538,6 +538,7 @@ const subirContrato = async (req, res) => {
 const obtenerContrato = async (req, res) => {
   try {
     const { id } = req.params;
+    const { verificar } = req.query;
 
     // Buscar archivo con cualquier extensión (aunque solo permitimos PDF)
     const uploadPath = path.join(__dirname, '../../uploads/contratos');
@@ -548,6 +549,17 @@ const obtenerContrato = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'No se encontró el contrato para este benefactor',
+      });
+    }
+
+    // Si solo se quiere verificar la existencia, retornar JSON
+    if (verificar === 'true') {
+      return res.json({
+        success: true,
+        data: {
+          existe: true,
+          filename: contratoFile,
+        },
       });
     }
 
