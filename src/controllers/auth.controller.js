@@ -293,10 +293,51 @@ const cambiarPassword = async (req, res) => {
   }
 };
 
+const listarUsuarios = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    // Obtener usuarios con sus roles
+    const result = await client.query(
+      `SELECT 
+        u.id_usuario,
+        u.nombre_usuario,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id_rol', r.id_rol,
+              'nombre', r.nombre
+            )
+          ) FILTER (WHERE r.id_rol IS NOT NULL),
+          '[]'
+        ) as roles
+      FROM usuarios u
+      LEFT JOIN usuario_roles ur ON u.id_usuario = ur.id_usuario
+      LEFT JOIN roles r ON ur.id_rol = r.id_rol
+      GROUP BY u.id_usuario, u.nombre_usuario
+      ORDER BY u.id_usuario`
+    );
+
+    res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error('Error al listar usuarios:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al listar usuarios',
+      error: error.message,
+    });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   login,
   crearUsuario,
   asignarRol,
   obtenerPerfil,
   cambiarPassword,
+  listarUsuarios,
 };

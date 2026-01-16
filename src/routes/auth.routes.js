@@ -10,6 +10,7 @@ router.post('/login', loginDto, validarResultado, authController.login);
 router.post('/usuarios', createUsuarioDto, validarResultado, authController.crearUsuario);
 
 // Rutas protegidas
+router.get('/usuarios', verificarToken, authController.listarUsuarios);
 router.post('/usuarios/asignar-rol', verificarToken, assignRoleDto, validarResultado, authController.asignarRol);
 router.get('/perfil', verificarToken, authController.obtenerPerfil);
 router.put('/cambiar-password', verificarToken, cambiarPasswordDto, validarResultado, authController.cambiarPassword);
