@@ -296,11 +296,15 @@ const cambiarPassword = async (req, res) => {
 const listarUsuarios = async (req, res) => {
   const client = await pool.connect();
   try {
-    // Obtener usuarios con sus roles
+    // Obtener usuarios con sus roles y sucursal
     const result = await client.query(
       `SELECT 
         u.id_usuario,
         u.nombre_usuario,
+        u.fecha_creacion,
+        u.id_sucursal,
+        s.iniciales as sucursal_iniciales,
+        s.nombre as sucursal_nombre,
         COALESCE(
           json_agg(
             json_build_object(
@@ -309,11 +313,21 @@ const listarUsuarios = async (req, res) => {
             )
           ) FILTER (WHERE r.id_rol IS NOT NULL),
           '[]'
-        ) as roles
+        ) as roles,
+        CASE 
+          WHEN s.id_sucursal IS NOT NULL THEN
+            json_build_object(
+              'id_sucursal', s.id_sucursal,
+              'iniciales', s.iniciales,
+              'nombre', s.nombre
+            )
+          ELSE NULL
+        END as sucursal
       FROM usuarios u
       LEFT JOIN usuario_roles ur ON u.id_usuario = ur.id_usuario
       LEFT JOIN roles r ON ur.id_rol = r.id_rol
-      GROUP BY u.id_usuario, u.nombre_usuario
+      LEFT JOIN sucursales s ON u.id_sucursal = s.id_sucursal
+      GROUP BY u.id_usuario, u.nombre_usuario, u.fecha_creacion, u.id_sucursal, s.id_sucursal, s.iniciales, s.nombre
       ORDER BY u.id_usuario`
     );
 

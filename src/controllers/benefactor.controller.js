@@ -180,23 +180,50 @@ const crearBenefactor = async (req, res) => {
       }
     }
 
+    // Obtener las iniciales de la sucursal del usuario que crea el benefactor
+    const sucursalResult = await client.query(
+      `SELECT s.iniciales 
+       FROM usuarios u 
+       INNER JOIN sucursales s ON u.id_sucursal = s.id_sucursal 
+       WHERE u.id_usuario = $1`,
+      [id_usuario]
+    );
+
+    if (sucursalResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        message: 'El usuario no tiene una sucursal asignada',
+      });
+    }
+
+    const iniciales_sucursal = sucursalResult.rows[0].iniciales;
+
+    // Generar el número de contrato usando la función de la base de datos
+    const numContratoResult = await client.query(
+      'SELECT obtener_siguiente_num_contrato($1) AS num_contrato',
+      [iniciales_sucursal]
+    );
+
+    const num_contrato = numContratoResult.rows[0].num_contrato;
+
     const result = await client.query(
       `INSERT INTO benefactores (
         tipo_benefactor, tipo_afiliacion, cuenta, n_convenio, mes_prod,
         fecha_suscripcion, nombre_completo, cedula, nacionalidad, estado_civil,
         fecha_nacimiento, direccion, ciudad, provincia, telefono, email,
         num_cuenta_tc, tipo_cuenta, banco_emisor, inscripcion, aporte,
-        observacion, estado, id_usuario, estado_registro
+        observacion, estado, id_usuario, estado_registro, num_contrato
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-        $16, $17, $18, $19, $20, $21, $22, $23, $24, 'PENDIENTE'
+        $16, $17, $18, $19, $20, $21, $22, $23, $24, 'PENDIENTE', $25
       ) RETURNING *`,
       [
         tipo_benefactor, tipo_afiliacion, cuenta, n_convenio, mes_prod,
         fecha_suscripcion, nombre_completo, cedula, nacionalidad, estado_civil,
         fecha_nacimiento, direccion, ciudad, provincia, telefono, email,
         num_cuenta_tc, tipo_cuenta, banco_emisor, inscripcion, aporte,
-        observacion, estado, id_usuario,
+        observacion, estado, id_usuario, num_contrato,
       ]
     );
 

@@ -7,6 +7,8 @@ API REST completa para la gestión de benefactores con autenticación JWT, contr
 - ✅ Autenticación con JWT
 - ✅ Gestión de usuarios con contraseñas hasheadas (bcrypt)
 - ✅ Sistema de roles y permisos
+- ✅ **Sistema de sucursales y asignación de usuarios**
+- ✅ **Numeración automática de contratos por sucursal**
 - ✅ CRUD completo de benefactores
 - ✅ Gestión de dependientes y titulares
 - ✅ Sistema de aprobación de registros
@@ -68,12 +70,14 @@ backend/
 │   ├── controllers/
 │   │   ├── auth.controller.js   # Controlador de autenticación
 │   │   ├── rol.controller.js    # Controlador de roles
+│   │   ├── sucursal.controller.js    # Controlador de sucursales
 │   │   ├── benefactor.controller.js  # Controlador de benefactores
 │   │   ├── aprobacion.controller.js  # Controlador de aprobaciones
 │   │   └── cobros.controller.js      # Controlador de cobros y saldos
 │   ├── dtos/
 │   │   ├── usuario.dto.js       # DTOs de validación de usuarios
 │   │   ├── rol.dto.js           # DTOs de validación de roles
+│   │   ├── sucursal.dto.js      # DTOs de validación de sucursales
 │   │   ├── benefactor.dto.js    # DTOs de validación de benefactores
 │   │   └── aprobacion.dto.js    # DTOs de validación de aprobaciones
 │   ├── middleware/
@@ -82,12 +86,14 @@ backend/
 │   └── routes/
 │       ├── auth.routes.js       # Rutas de autenticación
 │       ├── rol.routes.js        # Rutas de roles
+│       ├── sucursal.routes.js   # Rutas de sucursales
 │       ├── benefactor.routes.js # Rutas de benefactores
 │       ├── aprobacion.routes.js # Rutas de aprobaciones
 │       ├── cobros.routes.js     # Rutas de cobros y saldos
 │       └── index.js             # Enrutador principal
 ├── base/
 │   ├── basescript.sql           # Script de base de datos
+│   ├── sucursales.sql           # Script de sucursales
 │   ├── cobros_y_saldos.sql      # Script de cobros y saldos
 │   └── README_COBROS_SALDOS.md  # Documentación del módulo de cobros
 ├── .env                         # Variables de entorno
@@ -313,7 +319,92 @@ Content-Type: application/json
 }
 ```
 
+### Sucursales
+
+#### Listar Sucursales
+```http
+GET /api/sucursales
+Authorization: Bearer {token}
+```
+
+Respuesta:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id_sucursal": 1,
+      "iniciales": "SD",
+      "nombre": "Santo Domingo",
+      "activo": true,
+      "fecha_creacion": "2024-01-01T00:00:00",
+      "total_usuarios": 5
+    }
+  ],
+  "total": 1
+}
+```
+
+#### Obtener Sucursal por ID
+```http
+GET /api/sucursales/:id
+Authorization: Bearer {token}
+```
+
+#### Obtener Usuarios de una Sucursal
+```http
+GET /api/sucursales/:id/usuarios
+Authorization: Bearer {token}
+```
+
+#### Crear Sucursal
+```http
+POST /api/sucursales
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "iniciales": "GYE",
+  "nombre": "Guayaquil",
+  "activo": true
+}
+```
+
+#### Actualizar Sucursal
+```http
+PUT /api/sucursales/:id
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "nombre": "Guayaquil Norte",
+  "activo": true
+}
+```
+
+#### Eliminar Sucursal (Soft Delete)
+```http
+DELETE /api/sucursales/:id
+Authorization: Bearer {token}
+```
+
+**Nota:** Solo se pueden eliminar sucursales sin usuarios asignados. La operación marca la sucursal como inactiva.
+
+#### Asignar Sucursal a Usuario
+```http
+POST /api/sucursales/asignar-usuario
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "id_usuario": 5,
+  "id_sucursal": 1
+}
+```
+
 ### Benefactores
+
+**Nota importante:** Al crear un benefactor, el sistema genera automáticamente un número de contrato basado en la sucursal del usuario que lo crea (ej: SD001, SD002, GYE001, etc.).
 
 #### Listar Benefactores
 ```http
@@ -694,15 +785,26 @@ Respuesta:
 - **usuarios**: Usuarios del sistema con contraseñas hasheadas
 - **roles**: Roles disponibles en el sistema
 - **usuario_roles**: Relación muchos a muchos entre usuarios y roles
-- **benefactores**: Información de benefactores (titulares y dependientes)
+- **sucursales**: Sucursales de la organización con iniciales únicas
+- **benefactores**: Información de benefactores (titulares y dependientes) con número de contrato generado automáticamente
 - **relaciones_dependientes**: Relación entre titulares y dependientes
 - **aprobaciones_benefactores**: Historial de aprobaciones/rechazos
 - **cobros**: Registro de todos los cobros del banco (exitosos y fallidos)
 - **saldos_diarios**: Control diario de saldos por benefactor
 - **transacciones_saldo**: Auditoría completa de movimientos de saldo
 
-### Vistas y Funciones (Módulo de Cobros)
+### Relaciones Clave
 
+- **usuarios → sucursales**: Relación 1:1 (cada usuario pertenece a una sucursal)
+- **benefactores.num_contrato**: Generado automáticamente usando las iniciales de la sucursal del agente (ej: SD001, SD002, GYE001)
+
+### Vistas y Funciones
+
+#### Módulo de Sucursales
+- **vista_sucursales_usuarios**: Vista que muestra sucursales con la cantidad de usuarios asignados
+- **obtener_siguiente_num_contrato(iniciales)**: Función que genera el siguiente número de contrato para una sucursal
+
+#### Módulo de Cobros
 - **estado_pagos_mes_actual**: Vista de estado de pagos del mes en curso
 - **historial_pagos_mensuales**: Historial completo de pagos por mes
 - **procesar_cobros_del_dia()**: Función para procesar cobros de una fecha
@@ -728,9 +830,12 @@ Respuesta:
 
 1. Asegúrate de configurar correctamente el archivo `.env` con tus credenciales de base de datos
 2. La clave `JWT_SECRET` debe ser segura y única para producción
-3. Los endpoints de creación de benefactores crean registros con `estado_registro: PENDIENTE`
-4. Solo usuarios autenticados pueden aprobar/rechazar registros
-5. Las relaciones titular-dependiente se validan mediante triggers en la base de datos
+3. **Todos los usuarios deben tener una sucursal asignada** para poder crear benefactores
+4. **Los números de contrato se generan automáticamente** usando las iniciales de la sucursal del usuario que crea el benefactor (ej: SD001, SD002)
+5. Los endpoints de creación de benefactores crean registros con `estado_registro: PENDIENTE`
+6. Solo usuarios autenticados pueden aprobar/rechazar registros
+7. Las relaciones titular-dependiente se validan mediante triggers en la base de datos
+8. No se puede eliminar una sucursal que tenga usuarios asignados (primero hay que reasignarlos)
 
 ## 🚦 Códigos de Estado HTTP
 
