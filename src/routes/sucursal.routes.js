@@ -13,13 +13,13 @@ const {
 router.use(verificarToken);
 
 // Asignar sucursal a usuario (DEBE IR ANTES de la ruta genérica POST /)
-router.post('/asignar-usuario', asignarSucursalUsuarioDTO, validarErrores, sucursalController.asignarSucursalUsuario);
+router.post('/asignar-usuario', ...asignarSucursalUsuarioDTO, validarErrores, sucursalController.asignarSucursalUsuario);
 
 // Listar todas las sucursales
 router.get('/', sucursalController.listarSucursales);
 
 // Crear nueva sucursal
-router.post('/', crearSucursalDTO, validarErrores, sucursalController.crearSucursal);
+router.post('/', ...crearSucursalDTO, validarErrores, sucursalController.crearSucursal);
 
 // Obtener sucursal por ID
 router.get('/:id', sucursalController.obtenerSucursalPorId);
@@ -28,7 +28,7 @@ router.get('/:id', sucursalController.obtenerSucursalPorId);
 router.get('/:id/usuarios', sucursalController.obtenerUsuariosSucursal);
 
 // Actualizar sucursal
-router.put('/:id', actualizarSucursalDTO, validarErrores, sucursalController.actualizarSucursal);
+router.put('/:id', ...actualizarSucursalDTO, validarErrores, sucursalController.actualizarSucursal);
 
 // Eliminar sucursal (soft delete)
 router.delete('/:id', sucursalController.eliminarSucursal);
