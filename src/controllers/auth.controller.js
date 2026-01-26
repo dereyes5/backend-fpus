@@ -301,7 +301,6 @@ const listarUsuarios = async (req, res) => {
       `SELECT 
         u.id_usuario,
         u.nombre_usuario,
-        u.fecha_creacion,
         u.id_sucursal,
         s.iniciales as sucursal_iniciales,
         s.nombre as sucursal_nombre,
@@ -327,7 +326,7 @@ const listarUsuarios = async (req, res) => {
       LEFT JOIN usuario_roles ur ON u.id_usuario = ur.id_usuario
       LEFT JOIN roles r ON ur.id_rol = r.id_rol
       LEFT JOIN sucursales s ON u.id_sucursal = s.id_sucursal
-      GROUP BY u.id_usuario, u.nombre_usuario, u.fecha_creacion, u.id_sucursal, s.id_sucursal, s.iniciales, s.nombre
+      GROUP BY u.id_usuario, u.nombre_usuario, u.id_sucursal, s.id_sucursal, s.iniciales, s.nombre
       ORDER BY u.id_usuario`
     );
 
