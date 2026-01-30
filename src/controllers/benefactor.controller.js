@@ -30,7 +30,7 @@ const obtenerBenefactores = async (req, res) => {
 
     if (tieneEscritura) {
       // Si tiene escritura, solo ve los suyos
-      query += ` AND id_usuario_creador = $${paramCount}`;
+      query += ` AND id_usuario = $${paramCount}`;
       params.push(id_usuario);
       paramCount++;
       logger.debug('Filtering by user (has write permission)', { userId: id_usuario });
@@ -66,7 +66,7 @@ const obtenerBenefactores = async (req, res) => {
     let countParamCount = 1;
 
     if (tieneEscritura) {
-      countQuery += ` AND id_usuario_creador = $${countParamCount}`;
+      countQuery += ` AND id_usuario = $${countParamCount}`;
       countParams.push(id_usuario);
       countParamCount++;
     }
