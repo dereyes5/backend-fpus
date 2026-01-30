@@ -12,15 +12,14 @@ router.get('/benefactores/:id/saldo', cobrosController.obtenerSaldoBenefactor);
 router.get('/benefactores/:id/historial', cobrosController.obtenerHistorialBenefactor);
 router.get('/benefactores/:id/transacciones', cobrosController.obtenerTransaccionesSaldo);
 
-// Rutas de estado de pagos
-router.get('/estado/actual', cobrosController.obtenerEstadoPagosMesActual);
-router.get('/estado/fecha/:fecha', cobrosController.obtenerEstadoPagosPorFecha);
-router.get('/estado/mes/:mes/:anio', cobrosController.obtenerEstadoPagosPorMes);
+// Rutas de estado de aportes
+router.get('/estado/actual', cobrosController.obtenerEstadoAportesMesActual);
+router.get('/estado/fecha/:fecha', cobrosController.obtenerEstadoAportesPorFecha);
+router.get('/estado/mes/:mes/:anio', cobrosController.obtenerEstadoAportesPorMes);
 
-// Rutas de filtrado por estado de pago
-router.get('/morosos', cobrosController.obtenerMorosos);
-router.get('/pagados', cobrosController.obtenerPagados);
-router.get('/pagos-parciales', cobrosController.obtenerPagosParciales);
+// Rutas de filtrado por estado de aporte
+router.get('/no-aportados', cobrosController.obtenerNoAportados);
+router.get('/aportados', cobrosController.obtenerAportados);
 
 // Rutas de estadísticas y reportes
 router.get('/estadisticas', cobrosController.obtenerEstadisticas);

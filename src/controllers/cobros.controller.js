@@ -1,7 +1,7 @@
 const pool = require('../config/database');
 
 /**
- * Obtener lista de benefactores titulares con su monto a pagar
+ * Obtener lista de benefactores titulares con su monto esperado
  */
 const obtenerListaBenefactores = async (req, res) => {
   const client = await pool.connect();
@@ -13,7 +13,7 @@ const obtenerListaBenefactores = async (req, res) => {
         cedula,
         email,
         telefono,
-        aporte AS monto_a_pagar,
+        aporte AS monto_esperado,
         banco_emisor,
         tipo_cuenta,
         num_cuenta_tc
@@ -40,12 +40,12 @@ const obtenerListaBenefactores = async (req, res) => {
 };
 
 /**
- * Obtener estado de pagos del mes actual
+ * Obtener estado de aportes del mes actual
  */
-const obtenerEstadoPagosMesActual = async (req, res) => {
+const obtenerEstadoAportesMesActual = async (req, res) => {
   const client = await pool.connect();
   try {
-    const result = await client.query('SELECT * FROM estado_pagos_mes_actual ORDER BY nombre_completo');
+    const result = await client.query('SELECT * FROM estado_aportes_mes_actual ORDER BY nombre_completo');
 
     res.json({
       success: true,
@@ -55,10 +55,10 @@ const obtenerEstadoPagosMesActual = async (req, res) => {
       anio: result.rows[0]?.anio
     });
   } catch (error) {
-    console.error('Error al obtener estado de pagos:', error);
+    console.error('Error al obtener estado de aportes:', error);
     res.status(500).json({
       success: false,
-      error: 'Error al obtener estado de pagos del mes actual'
+      error: 'Error al obtener estado de aportes del mes actual'
     });
   } finally {
     client.release();
@@ -66,15 +66,15 @@ const obtenerEstadoPagosMesActual = async (req, res) => {
 };
 
 /**
- * Obtener estado de pagos por fecha específica
+ * Obtener estado de aportes por fecha específica
  */
-const obtenerEstadoPagosPorFecha = async (req, res) => {
+const obtenerEstadoAportesPorFecha = async (req, res) => {
   const client = await pool.connect();
   try {
     const { fecha } = req.params;
 
     const result = await client.query(
-      'SELECT * FROM obtener_estado_pagos_por_fecha($1)',
+      'SELECT * FROM obtener_estado_aportes_por_fecha($1)',
       [fecha]
     );
 
@@ -88,7 +88,7 @@ const obtenerEstadoPagosPorFecha = async (req, res) => {
     console.error('Error al obtener estado por fecha:', error);
     res.status(500).json({
       success: false,
-      error: 'Error al obtener estado de pagos por fecha'
+      error: 'Error al obtener estado de aportes por fecha'
     });
   } finally {
     client.release();
@@ -96,15 +96,15 @@ const obtenerEstadoPagosPorFecha = async (req, res) => {
 };
 
 /**
- * Obtener estado de pagos por mes y año
+ * Obtener estado de aportes por mes y año
  */
-const obtenerEstadoPagosPorMes = async (req, res) => {
+const obtenerEstadoAportesPorMes = async (req, res) => {
   const client = await pool.connect();
   try {
     const { mes, anio } = req.params;
 
     const result = await client.query(
-      'SELECT * FROM obtener_estado_pago_por_mes($1, $2)',
+      'SELECT * FROM obtener_estado_aporte_por_mes($1, $2)',
       [parseInt(mes), parseInt(anio)]
     );
 
@@ -119,7 +119,7 @@ const obtenerEstadoPagosPorMes = async (req, res) => {
     console.error('Error al obtener estado por mes:', error);
     res.status(500).json({
       success: false,
-      error: 'Error al obtener estado de pagos por mes'
+      error: 'Error al obtener estado de aportes por mes'
     });
   } finally {
     client.release();
@@ -127,14 +127,14 @@ const obtenerEstadoPagosPorMes = async (req, res) => {
 };
 
 /**
- * Obtener benefactores que NO han pagado este mes
+ * Obtener benefactores que NO han aportado este mes
  */
-const obtenerMorosos = async (req, res) => {
+const obtenerNoAportados = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT * FROM estado_pagos_mes_actual 
-      WHERE estado_pago = 'NO_PAGADO'
+      SELECT * FROM estado_aportes_mes_actual 
+      WHERE estado_aporte = 'NO_APORTADO'
       ORDER BY nombre_completo
     `);
 
@@ -144,10 +144,10 @@ const obtenerMorosos = async (req, res) => {
       total: result.rows.length
     });
   } catch (error) {
-    console.error('Error al obtener morosos:', error);
+    console.error('Error al obtener no aportados:', error);
     res.status(500).json({
       success: false,
-      error: 'Error al obtener lista de morosos'
+      error: 'Error al obtener lista de no aportados'
     });
   } finally {
     client.release();
@@ -155,15 +155,15 @@ const obtenerMorosos = async (req, res) => {
 };
 
 /**
- * Obtener benefactores que SÍ han pagado este mes
+ * Obtener benefactores que SÍ han aportado este mes
  */
-const obtenerPagados = async (req, res) => {
+const obtenerAportados = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT * FROM estado_pagos_mes_actual 
-      WHERE estado_pago = 'PAGADO'
-      ORDER BY ultima_fecha_pago DESC
+      SELECT * FROM estado_aportes_mes_actual 
+      WHERE estado_aporte = 'APORTADO'
+      ORDER BY ultima_fecha_aporte DESC
     `);
 
     res.json({
@@ -172,38 +172,10 @@ const obtenerPagados = async (req, res) => {
       total: result.rows.length
     });
   } catch (error) {
-    console.error('Error al obtener pagados:', error);
+    console.error('Error al obtener aportados:', error);
     res.status(500).json({
       success: false,
-      error: 'Error al obtener lista de pagados'
-    });
-  } finally {
-    client.release();
-  }
-};
-
-/**
- * Obtener benefactores con pago parcial este mes
- */
-const obtenerPagosParciales = async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const result = await client.query(`
-      SELECT * FROM estado_pagos_mes_actual 
-      WHERE estado_pago = 'PAGO_PARCIAL'
-      ORDER BY nombre_completo
-    `);
-
-    res.json({
-      success: true,
-      data: result.rows,
-      total: result.rows.length
-    });
-  } catch (error) {
-    console.error('Error al obtener pagos parciales:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Error al obtener lista de pagos parciales'
+      error: 'Error al obtener lista de aportados'
     });
   } finally {
     client.release();
@@ -219,17 +191,15 @@ const obtenerEstadisticas = async (req, res) => {
     const result = await client.query(`
       SELECT 
         COUNT(*) AS total_titulares,
-        COUNT(CASE WHEN estado_pago = 'PAGADO' THEN 1 END) AS pagados,
-        COUNT(CASE WHEN estado_pago = 'PAGO_PARCIAL' THEN 1 END) AS parciales,
-        COUNT(CASE WHEN estado_pago = 'NO_PAGADO' THEN 1 END) AS no_pagados,
-        COALESCE(SUM(monto_a_pagar), 0) AS total_esperado,
-        COALESCE(SUM(monto_pagado), 0) AS total_recaudado,
-        COALESCE(SUM(saldo_pendiente), 0) AS total_pendiente,
+        COUNT(CASE WHEN estado_aporte = 'APORTADO' THEN 1 END) AS aportados,
+        COUNT(CASE WHEN estado_aporte = 'NO_APORTADO' THEN 1 END) AS no_aportados,
+        COALESCE(SUM(monto_esperado), 0) AS total_esperado,
+        COALESCE(SUM(monto_aportado), 0) AS total_recaudado,
         ROUND(
-          (COALESCE(SUM(monto_pagado), 0) / NULLIF(COALESCE(SUM(monto_a_pagar), 0), 0) * 100), 
+          (COALESCE(SUM(monto_aportado), 0) / NULLIF(COALESCE(SUM(monto_esperado), 0), 0) * 100), 
           2
         ) AS porcentaje_recaudacion
-      FROM estado_pagos_mes_actual
+      FROM estado_aportes_mes_actual
     `);
 
     res.json({
@@ -248,13 +218,13 @@ const obtenerEstadisticas = async (req, res) => {
 };
 
 /**
- * Obtener historial completo de pagos mensuales
+ * Obtener historial completo de aportes mensuales
  */
 const obtenerHistorialCompleto = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT * FROM historial_pagos_mensuales 
+      SELECT * FROM historial_aportes_mensuales 
       ORDER BY anio DESC, mes DESC, nombre_completo
     `);
 
@@ -267,7 +237,7 @@ const obtenerHistorialCompleto = async (req, res) => {
     console.error('Error al obtener historial:', error);
     res.status(500).json({
       success: false,
-      error: 'Error al obtener historial de pagos'
+      error: 'Error al obtener historial de aportes'
     });
   } finally {
     client.release();
@@ -275,7 +245,7 @@ const obtenerHistorialCompleto = async (req, res) => {
 };
 
 /**
- * Obtener historial de pagos de un benefactor específico
+ * Obtener historial de aportes de un benefactor específico
  */
 const obtenerHistorialBenefactor = async (req, res) => {
   const client = await pool.connect();
@@ -283,7 +253,7 @@ const obtenerHistorialBenefactor = async (req, res) => {
     const { id } = req.params;
 
     const result = await client.query(`
-      SELECT * FROM historial_pagos_mensuales 
+      SELECT * FROM historial_aportes_mensuales 
       WHERE id_benefactor = $1
       ORDER BY anio DESC, mes DESC
     `, [id]);
@@ -572,12 +542,11 @@ const obtenerTransaccionesSaldo = async (req, res) => {
 
 module.exports = {
   obtenerListaBenefactores,
-  obtenerEstadoPagosMesActual,
-  obtenerEstadoPagosPorFecha,
-  obtenerEstadoPagosPorMes,
-  obtenerMorosos,
-  obtenerPagados,
-  obtenerPagosParciales,
+  obtenerEstadoAportesMesActual,
+  obtenerEstadoAportesPorFecha,
+  obtenerEstadoAportesPorMes,
+  obtenerNoAportados,
+  obtenerAportados,
   obtenerEstadisticas,
   obtenerHistorialCompleto,
   obtenerHistorialBenefactor,
