@@ -1,12 +1,15 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
+const logger = require('../config/logger');
 require('dotenv').config();
 
 const login = async (req, res) => {
   const client = await pool.connect();
   try {
     const { nombre_usuario, password } = req.body;
+
+    logger.info('Login attempt', { username: nombre_usuario, ip: req.ip });
 
     // Buscar usuario
     const userResult = await client.query(
@@ -15,6 +18,7 @@ const login = async (req, res) => {
     );
 
     if (userResult.rows.length === 0) {
+      logger.warn('Login failed - user not found', { username: nombre_usuario });
       return res.status(401).json({
         success: false,
         message: 'Credenciales inválidas',
@@ -27,6 +31,10 @@ const login = async (req, res) => {
     const passwordValida = await bcrypt.compare(password, usuario.password_hash);
     
     if (!passwordValida) {
+      logger.warn('Login failed - invalid password', { 
+        username: nombre_usuario,
+        userId: usuario.id_usuario,
+      });
       return res.status(401).json({
         success: false,
         message: 'Credenciales inválidas',
@@ -34,6 +42,7 @@ const login = async (req, res) => {
     }
 
     // Obtener permisos del usuario
+    logger.debug('Fetching user permissions', { userId: usuario.id_usuario });
     const permisosResult = await client.query(
       `SELECT 
         cartera_lectura,
@@ -52,6 +61,7 @@ const login = async (req, res) => {
     // Si el usuario no tiene permisos asignados, crear permisos por defecto (todos en false)
     let permisos;
     if (permisosResult.rows.length === 0) {
+      logger.info('Creating default permissions for user', { userId: usuario.id_usuario });
       await client.query(
         `INSERT INTO permisos_usuario (id_usuario) VALUES ($1)`,
         [usuario.id_usuario]
@@ -81,6 +91,13 @@ const login = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
     );
 
+    logger.info('Login successful', {
+      userId: usuario.id_usuario,
+      username: usuario.nombre_usuario,
+      ip: req.ip,
+      hasPermissions: Object.keys(permisos).filter(p => permisos[p]).length > 0,
+    });
+
     res.json({
       success: true,
       message: 'Login exitoso',
@@ -94,7 +111,10 @@ const login = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error en login:', error);
+    logger.logError(error, {
+      action: 'login',
+      username: req.body.nombre_usuario,
+    });
     res.status(500).json({
       success: false,
       message: 'Error al iniciar sesión',
@@ -110,6 +130,11 @@ const crearUsuario = async (req, res) => {
   try {
     const { nombre_usuario, password } = req.body;
 
+    logger.info('Creating new user', { 
+      username: nombre_usuario,
+      createdBy: req.usuario?.id_usuario,
+    });
+
     // Verificar si el usuario ya existe
     const usuarioExistente = await client.query(
       'SELECT id_usuario FROM usuarios WHERE nombre_usuario = $1',
@@ -117,6 +142,7 @@ const crearUsuario = async (req, res) => {
     );
 
     if (usuarioExistente.rows.length > 0) {
+      logger.warn('User creation failed - user already exists', { username: nombre_usuario });
       return res.status(400).json({
         success: false,
         message: 'El nombre de usuario ya existe',

@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const logger = require('../config/logger');
 require('dotenv').config();
 
 const verificarToken = (req, res, next) => {
@@ -12,6 +13,11 @@ const verificarToken = (req, res, next) => {
     }
     
     if (!token) {
+      logger.warn('Token not provided', {
+        method: req.method,
+        url: req.originalUrl,
+        ip: req.ip,
+      });
       return res.status(401).json({
         success: false,
         message: 'Token no proporcionado',
@@ -20,8 +26,20 @@ const verificarToken = (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.usuario = decoded;
+    
+    logger.debug('Token verified successfully', {
+      userId: decoded.id_usuario,
+      username: decoded.nombre_usuario,
+    });
+    
     next();
   } catch (error) {
+    logger.warn('Token verification failed', {
+      error: error.name,
+      message: error.message,
+      url: req.originalUrl,
+    });
+    
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({
         success: false,
@@ -49,9 +67,14 @@ const verificarToken = (req, res, next) => {
 const verificarPermiso = (permiso) => {
   return (req, res, next) => {
     try {
-      const { permisos } = req.usuario;
+      const { permisos, id_usuario, nombre_usuario } = req.usuario;
       
       if (!permisos) {
+        logger.warn('User without permissions', {
+          userId: id_usuario,
+          username: nombre_usuario,
+          requiredPermission: permiso,
+        });
         return res.status(403).json({
           success: false,
           message: 'Usuario sin permisos asignados',
@@ -59,14 +82,31 @@ const verificarPermiso = (permiso) => {
       }
 
       if (!permisos[permiso]) {
+        logger.warn('Permission denied', {
+          userId: id_usuario,
+          username: nombre_usuario,
+          requiredPermission: permiso,
+          userPermissions: Object.keys(permisos).filter(p => permisos[p]),
+        });
         return res.status(403).json({
           success: false,
           message: `No tienes permiso para realizar esta acción. Permiso requerido: ${permiso}`,
         });
       }
 
+      logger.debug('Permission granted', {
+        userId: id_usuario,
+        username: nombre_usuario,
+        permission: permiso,
+      });
+
       next();
     } catch (error) {
+      logger.logError(error, {
+        userId: req.usuario?.id_usuario,
+        action: 'verificarPermiso',
+        permission: permiso,
+      });
       return res.status(500).json({
         success: false,
         message: 'Error al verificar permisos',

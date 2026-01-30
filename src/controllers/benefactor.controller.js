@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const logger = require('../config/logger');
 const path = require('path');
 const fs = require('fs');
 
@@ -6,6 +7,14 @@ const obtenerBenefactores = async (req, res) => {
   const client = await pool.connect();
   try {
     const { tipo_benefactor, estado_registro, page = 1, limit = 50 } = req.query;
+    
+    logger.debug('Fetching benefactores', {
+      tipo_benefactor,
+      estado_registro,
+      page,
+      limit,
+      userId: req.usuario?.id_usuario,
+    });
     
     let query = 'SELECT * FROM benefactores WHERE 1=1';
     const params = [];
