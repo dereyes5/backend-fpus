@@ -7,18 +7,37 @@ const obtenerBenefactores = async (req, res) => {
   const client = await pool.connect();
   try {
     const { tipo_benefactor, estado_registro, page = 1, limit = 50 } = req.query;
+    const { id_usuario, permisos } = req.usuario;
     
     logger.debug('Fetching benefactores', {
       tipo_benefactor,
       estado_registro,
       page,
       limit,
-      userId: req.usuario?.id_usuario,
+      userId: id_usuario,
+      permisos,
     });
     
     let query = 'SELECT * FROM benefactores WHERE 1=1';
     const params = [];
     let paramCount = 1;
+
+    // Lógica de permisos:
+    // - Solo lectura (sin escritura): Ve TODOS los benefactores
+    // - Lectura + escritura: Ve solo los benefactores creados por él
+    const tieneEscritura = permisos?.benefactores_escritura === true;
+    const tieneSoloLectura = permisos?.benefactores_lectura === true && !tieneEscritura;
+
+    if (tieneEscritura) {
+      // Si tiene escritura, solo ve los suyos
+      query += ` AND id_usuario_creador = $${paramCount}`;
+      params.push(id_usuario);
+      paramCount++;
+      logger.debug('Filtering by user (has write permission)', { userId: id_usuario });
+    } else if (tieneSoloLectura) {
+      // Si solo tiene lectura, ve todos
+      logger.debug('Showing all benefactores (read-only user)');
+    }
 
     if (tipo_benefactor) {
       query += ` AND tipo_benefactor = $${paramCount}`;
@@ -41,10 +60,16 @@ const obtenerBenefactores = async (req, res) => {
 
     const result = await client.query(query, params);
 
-    // Contar total
+    // Contar total con el mismo filtro
     let countQuery = 'SELECT COUNT(*) as total FROM benefactores WHERE 1=1';
     const countParams = [];
     let countParamCount = 1;
+
+    if (tieneEscritura) {
+      countQuery += ` AND id_usuario_creador = $${countParamCount}`;
+      countParams.push(id_usuario);
+      countParamCount++;
+    }
 
     if (tipo_benefactor) {
       countQuery += ` AND tipo_benefactor = $${countParamCount}`;
@@ -60,6 +85,13 @@ const obtenerBenefactores = async (req, res) => {
     const countResult = await client.query(countQuery, countParams);
     const total = parseInt(countResult.rows[0].total);
 
+    logger.info('Benefactores fetched', {
+      userId: id_usuario,
+      count: result.rows.length,
+      total,
+      filtered: tieneEscritura,
+    });
+
     res.json({
       success: true,
       data: result.rows,
@@ -71,7 +103,10 @@ const obtenerBenefactores = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error al obtener benefactores:', error);
+    logger.logError(error, {
+      action: 'obtenerBenefactores',
+      userId: req.usuario?.id_usuario,
+    });
     res.status(500).json({
       success: false,
       message: 'Error al obtener benefactores',
