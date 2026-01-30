@@ -15,7 +15,16 @@ git stash
 
 # Obtener últimos cambios
 echo "📥 Descargando cambios..."
-git pull origin main
+# Configurar git para hacer rebase en caso de divergencia
+git config pull.rebase false
+
+# Intentar pull normal primero
+if ! git pull origin main; then
+  echo "⚠️  Detectadas ramas divergentes, forzando actualización desde remoto..."
+  # Si falla, resetear al estado del remoto
+  git fetch origin main
+  git reset --hard origin/main
+fi
 
 # Restaurar cambios locales si existían
 git stash pop || true
