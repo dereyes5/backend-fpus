@@ -11,7 +11,7 @@ router.post('/usuarios', createUsuarioDto, validarResultado, authController.crea
 
 // Rutas protegidas
 router.get('/usuarios', verificarToken, authController.listarUsuarios);
-router.post('/usuarios/asignar-rol', verificarToken, assignRoleDto, validarResultado, authController.asignarRol);
+router.put('/usuarios/:id_usuario/permisos', verificarToken, authController.asignarPermisos);
 router.get('/perfil', verificarToken, authController.obtenerPerfil);
 router.put('/cambiar-password', verificarToken, cambiarPasswordDto, validarResultado, authController.cambiarPassword);
 

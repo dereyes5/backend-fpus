@@ -1,42 +1,35 @@
 {
   "recursos": [
     {
+      "id": "cartera",
+      "nombre": "Cartera",
+      "descripcion": "Gestión de aportes y cobros",
+      "permisos": ["lectura", "escritura"]
+    },
+    {
       "id": "benefactores",
       "nombre": "Benefactores",
-      "descripcion": "Gestión de benefactores y dependientes"
+      "descripcion": "Gestión de benefactores y dependientes",
+      "permisos": ["lectura", "escritura"]
+    },
+    {
+      "id": "social",
+      "nombre": "Social",
+      "descripcion": "Módulo de trabajo social",
+      "permisos": ["lectura", "escritura"]
+    },
+    {
+      "id": "configuraciones",
+      "nombre": "Configuraciones",
+      "descripcion": "Configuración del sistema",
+      "permisos": ["acceso"]
     },
     {
       "id": "aprobaciones",
       "nombre": "Aprobaciones",
-      "descripcion": "Aprobación y rechazo de registros"
-    },
-    {
-      "id": "cobros",
-      "nombre": "Cobros y Pagos",
-      "descripcion": "Sistema de cobros y saldos"
-    },
-    {
-      "id": "usuarios",
-      "nombre": "Usuarios",
-      "descripcion": "Gestión de usuarios del sistema"
-    },
-    {
-      "id": "roles",
-      "nombre": "Roles",
-      "descripcion": "Gestión de roles y permisos"
+      "descripcion": "Aprobación de benefactores",
+      "permisos": ["acceso"]
     }
   ],
-  "permisos_por_rol": {
-    "1": {
-      "id_rol": 1,
-      "nombre": "EJECUTIVO",
-      "permisos": {
-        "benefactores": { "ver": true, "editar": true },
-        "aprobaciones": { "ver": true, "editar": true },
-        "cobros": { "ver": true, "editar": true },
-        "usuarios": { "ver": false, "editar": false },
-        "roles": { "ver": false, "editar": false }
-      }
-    }
-  }
+  "descripcion": "Sistema de permisos granulares por usuario. Cada usuario tiene permisos específicos para cada recurso."
 }

@@ -33,21 +33,49 @@ const login = async (req, res) => {
       });
     }
 
-    // Obtener roles del usuario
-    const rolesResult = await client.query(
-      `SELECT r.id_rol, r.nombre 
-       FROM roles r
-       INNER JOIN usuario_roles ur ON r.id_rol = ur.id_rol
-       WHERE ur.id_usuario = $1`,
+    // Obtener permisos del usuario
+    const permisosResult = await client.query(
+      `SELECT 
+        cartera_lectura,
+        cartera_escritura,
+        benefactores_lectura,
+        benefactores_escritura,
+        social_lectura,
+        social_escritura,
+        configuraciones,
+        aprobaciones
+       FROM permisos_usuario
+       WHERE id_usuario = $1`,
       [usuario.id_usuario]
     );
+
+    // Si el usuario no tiene permisos asignados, crear permisos por defecto (todos en false)
+    let permisos;
+    if (permisosResult.rows.length === 0) {
+      await client.query(
+        `INSERT INTO permisos_usuario (id_usuario) VALUES ($1)`,
+        [usuario.id_usuario]
+      );
+      permisos = {
+        cartera_lectura: false,
+        cartera_escritura: false,
+        benefactores_lectura: false,
+        benefactores_escritura: false,
+        social_lectura: false,
+        social_escritura: false,
+        configuraciones: false,
+        aprobaciones: false,
+      };
+    } else {
+      permisos = permisosResult.rows[0];
+    }
 
     // Generar token
     const token = jwt.sign(
       {
         id_usuario: usuario.id_usuario,
         nombre_usuario: usuario.nombre_usuario,
-        roles: rolesResult.rows,
+        permisos,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
@@ -61,7 +89,7 @@ const login = async (req, res) => {
         usuario: {
           id_usuario: usuario.id_usuario,
           nombre_usuario: usuario.nombre_usuario,
-          roles: rolesResult.rows,
+          permisos,
         },
       },
     });
@@ -124,10 +152,20 @@ const crearUsuario = async (req, res) => {
   }
 };
 
-const asignarRol = async (req, res) => {
+const asignarPermisos = async (req, res) => {
   const client = await pool.connect();
   try {
-    const { id_usuario, id_rol } = req.body;
+    const { id_usuario } = req.params;
+    const {
+      cartera_lectura,
+      cartera_escritura,
+      benefactores_lectura,
+      benefactores_escritura,
+      social_lectura,
+      social_escritura,
+      configuraciones,
+      aprobaciones,
+    } = req.body;
 
     // Verificar que el usuario existe
     const usuarioExiste = await client.query(
@@ -142,47 +180,52 @@ const asignarRol = async (req, res) => {
       });
     }
 
-    // Verificar que el rol existe
-    const rolExiste = await client.query(
-      'SELECT id_rol FROM roles WHERE id_rol = $1',
-      [id_rol]
-    );
-
-    if (rolExiste.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Rol no encontrado',
-      });
-    }
-
-    // Verificar si ya tiene el rol asignado
-    const rolAsignado = await client.query(
-      'SELECT * FROM usuario_roles WHERE id_usuario = $1 AND id_rol = $2',
-      [id_usuario, id_rol]
-    );
-
-    if (rolAsignado.rows.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'El usuario ya tiene este rol asignado',
-      });
-    }
-
-    // Asignar rol
+    // Insertar o actualizar permisos
     await client.query(
-      'INSERT INTO usuario_roles (id_usuario, id_rol) VALUES ($1, $2)',
-      [id_usuario, id_rol]
+      `INSERT INTO permisos_usuario (
+        id_usuario,
+        cartera_lectura,
+        cartera_escritura,
+        benefactores_lectura,
+        benefactores_escritura,
+        social_lectura,
+        social_escritura,
+        configuraciones,
+        aprobaciones
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (id_usuario) 
+      DO UPDATE SET
+        cartera_lectura = $2,
+        cartera_escritura = $3,
+        benefactores_lectura = $4,
+        benefactores_escritura = $5,
+        social_lectura = $6,
+        social_escritura = $7,
+        configuraciones = $8,
+        aprobaciones = $9,
+        fecha_actualizacion = NOW()`,
+      [
+        id_usuario,
+        cartera_lectura || false,
+        cartera_escritura || false,
+        benefactores_lectura || false,
+        benefactores_escritura || false,
+        social_lectura || false,
+        social_escritura || false,
+        configuraciones || false,
+        aprobaciones || false,
+      ]
     );
 
-    res.status(201).json({
+    res.status(200).json({
       success: true,
-      message: 'Rol asignado exitosamente',
+      message: 'Permisos asignados exitosamente',
     });
   } catch (error) {
-    console.error('Error al asignar rol:', error);
+    console.error('Error al asignar permisos:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al asignar rol',
+      message: 'Error al asignar permisos',
       error: error.message,
     });
   } finally {
@@ -208,21 +251,41 @@ const obtenerPerfil = async (req, res) => {
       });
     }
 
-    // Obtener roles
-    const rolesResult = await client.query(
-      `SELECT r.id_rol, r.nombre 
-       FROM roles r
-       INNER JOIN usuario_roles ur ON r.id_rol = ur.id_rol
-       WHERE ur.id_usuario = $1`,
+    // Obtener permisos
+    const permisosResult = await client.query(
+      `SELECT 
+        cartera_lectura,
+        cartera_escritura,
+        benefactores_lectura,
+        benefactores_escritura,
+        social_lectura,
+        social_escritura,
+        configuraciones,
+        aprobaciones
+       FROM permisos_usuario
+       WHERE id_usuario = $1`,
       [id_usuario]
     );
+
+    const permisos = permisosResult.rows.length > 0 
+      ? permisosResult.rows[0]
+      : {
+          cartera_lectura: false,
+          cartera_escritura: false,
+          benefactores_lectura: false,
+          benefactores_escritura: false,
+          social_lectura: false,
+          social_escritura: false,
+          configuraciones: false,
+          aprobaciones: false,
+        };
 
     res.json({
       success: true,
       data: {
         id_usuario: userResult.rows[0].id_usuario,
         nombre_usuario: userResult.rows[0].nombre_usuario,
-        roles: rolesResult.rows,
+        permisos,
       },
     });
   } catch (error) {
@@ -296,7 +359,7 @@ const cambiarPassword = async (req, res) => {
 const listarUsuarios = async (req, res) => {
   const client = await pool.connect();
   try {
-    // Obtener usuarios con sus roles y sucursal
+    // Obtener usuarios con sus permisos
     const result = await client.query(
       `SELECT 
         u.id_usuario,
@@ -304,15 +367,6 @@ const listarUsuarios = async (req, res) => {
         u.id_sucursal,
         s.iniciales as sucursal_iniciales,
         s.nombre as sucursal_nombre,
-        COALESCE(
-          json_agg(
-            json_build_object(
-              'id_rol', r.id_rol,
-              'nombre', r.nombre
-            )
-          ) FILTER (WHERE r.id_rol IS NOT NULL),
-          '[]'
-        ) as roles,
         CASE 
           WHEN s.id_sucursal IS NOT NULL THEN
             json_build_object(
@@ -321,12 +375,24 @@ const listarUsuarios = async (req, res) => {
               'nombre', s.nombre
             )
           ELSE NULL
-        END as sucursal
+        END as sucursal,
+        CASE 
+          WHEN p.id_permiso IS NOT NULL THEN
+            json_build_object(
+              'cartera_lectura', p.cartera_lectura,
+              'cartera_escritura', p.cartera_escritura,
+              'benefactores_lectura', p.benefactores_lectura,
+              'benefactores_escritura', p.benefactores_escritura,
+              'social_lectura', p.social_lectura,
+              'social_escritura', p.social_escritura,
+              'configuraciones', p.configuraciones,
+              'aprobaciones', p.aprobaciones
+            )
+          ELSE NULL
+        END as permisos
       FROM usuarios u
-      LEFT JOIN usuario_roles ur ON u.id_usuario = ur.id_usuario
-      LEFT JOIN roles r ON ur.id_rol = r.id_rol
+      LEFT JOIN permisos_usuario p ON u.id_usuario = p.id_usuario
       LEFT JOIN sucursales s ON u.id_sucursal = s.id_sucursal
-      GROUP BY u.id_usuario, u.nombre_usuario, u.id_sucursal, s.id_sucursal, s.iniciales, s.nombre
       ORDER BY u.id_usuario`
     );
 
@@ -349,7 +415,7 @@ const listarUsuarios = async (req, res) => {
 module.exports = {
   login,
   crearUsuario,
-  asignarRol,
+  asignarPermisos,
   obtenerPerfil,
   cambiarPassword,
   listarUsuarios,
