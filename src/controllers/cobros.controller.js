@@ -45,7 +45,32 @@ const obtenerListaBenefactores = async (req, res) => {
 const obtenerEstadoAportesMesActual = async (req, res) => {
   const client = await pool.connect();
   try {
-    const result = await client.query('SELECT * FROM estado_aportes_mes_actual ORDER BY nombre_completo');
+    const result = await client.query(`
+      SELECT 
+        e.*,
+        b.n_convenio,
+        COALESCE(cobros_estado.debitados, 0) as cobros_debitados,
+        COALESCE(cobros_estado.pendientes, 0) as cobros_pendientes,
+        COALESCE(cobros_estado.errores, 0) as cobros_errores,
+        CASE 
+          WHEN COALESCE(cobros_estado.debitados, 0) > 0 AND e.estado_aporte = 'APORTADO' THEN 'DEBITADO'
+          WHEN COALESCE(cobros_estado.pendientes, 0) > 0 OR COALESCE(cobros_estado.errores, 0) > 0 THEN 'PENDIENTE'
+          ELSE e.estado_aporte
+        END as estado_cobro
+      FROM estado_aportes_mes_actual e
+      JOIN benefactores b ON e.id_benefactor = b.id_benefactor
+      LEFT JOIN LATERAL (
+        SELECT 
+          COUNT(CASE WHEN c.estado = 'Proceso O.K.' THEN 1 END) as debitados,
+          COUNT(CASE WHEN c.estado = 'PENDIENTE' THEN 1 END) as pendientes,
+          COUNT(CASE WHEN c.estado LIKE 'ERROR%' THEN 1 END) as errores
+        FROM cobros c
+        WHERE c.id_benefactor = e.id_benefactor
+          AND EXTRACT(MONTH FROM c.fecha_transmision) = EXTRACT(MONTH FROM CURRENT_DATE)
+          AND EXTRACT(YEAR FROM c.fecha_transmision) = EXTRACT(YEAR FROM CURRENT_DATE)
+      ) cobros_estado ON TRUE
+      ORDER BY nombre_completo
+    `);
 
     res.json({
       success: true,
@@ -133,8 +158,29 @@ const obtenerNoAportados = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT * FROM estado_aportes_mes_actual 
-      WHERE estado_aporte = 'NO_APORTADO'
+      SELECT 
+        e.*,
+        b.n_convenio,
+        COALESCE(cobros_estado.debitados, 0) as cobros_debitados,
+        COALESCE(cobros_estado.pendientes, 0) as cobros_pendientes,
+        COALESCE(cobros_estado.errores, 0) as cobros_errores,
+        CASE 
+          WHEN COALESCE(cobros_estado.pendientes, 0) > 0 OR COALESCE(cobros_estado.errores, 0) > 0 THEN 'PENDIENTE'
+          ELSE 'NO_APORTADO'
+        END as estado_cobro
+      FROM estado_aportes_mes_actual e
+      JOIN benefactores b ON e.id_benefactor = b.id_benefactor
+      LEFT JOIN LATERAL (
+        SELECT 
+          COUNT(CASE WHEN c.estado = 'Proceso O.K.' THEN 1 END) as debitados,
+          COUNT(CASE WHEN c.estado = 'PENDIENTE' THEN 1 END) as pendientes,
+          COUNT(CASE WHEN c.estado LIKE 'ERROR%' THEN 1 END) as errores
+        FROM cobros c
+        WHERE c.id_benefactor = e.id_benefactor
+          AND EXTRACT(MONTH FROM c.fecha_transmision) = EXTRACT(MONTH FROM CURRENT_DATE)
+          AND EXTRACT(YEAR FROM c.fecha_transmision) = EXTRACT(YEAR FROM CURRENT_DATE)
+      ) cobros_estado ON TRUE
+      WHERE e.estado_aporte = 'NO_APORTADO'
       ORDER BY nombre_completo
     `);
 
@@ -153,6 +199,11 @@ const obtenerNoAportados = async (req, res) => {
     client.release();
   }
 };
+    });
+  } finally {
+    client.release();
+  }
+};
 
 /**
  * Obtener benefactores que SÍ han aportado este mes
@@ -161,9 +212,27 @@ const obtenerAportados = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT * FROM estado_aportes_mes_actual 
-      WHERE estado_aporte = 'APORTADO'
-      ORDER BY ultima_fecha_aporte DESC
+      SELECT 
+        e.*,
+        b.n_convenio,
+        COALESCE(cobros_estado.debitados, 0) as cobros_debitados,
+        COALESCE(cobros_estado.pendientes, 0) as cobros_pendientes,
+        COALESCE(cobros_estado.errores, 0) as cobros_errores,
+        'DEBITADO' as estado_cobro
+      FROM estado_aportes_mes_actual e
+      JOIN benefactores b ON e.id_benefactor = b.id_benefactor
+      LEFT JOIN LATERAL (
+        SELECT 
+          COUNT(CASE WHEN c.estado = 'Proceso O.K.' THEN 1 END) as debitados,
+          COUNT(CASE WHEN c.estado = 'PENDIENTE' THEN 1 END) as pendientes,
+          COUNT(CASE WHEN c.estado LIKE 'ERROR%' THEN 1 END) as errores
+        FROM cobros c
+        WHERE c.id_benefactor = e.id_benefactor
+          AND EXTRACT(MONTH FROM c.fecha_transmision) = EXTRACT(MONTH FROM CURRENT_DATE)
+          AND EXTRACT(YEAR FROM c.fecha_transmision) = EXTRACT(YEAR FROM CURRENT_DATE)
+      ) cobros_estado ON TRUE
+      WHERE e.estado_aporte = 'APORTADO'
+      ORDER BY e.ultima_fecha_aporte DESC
     `);
 
     res.json({
