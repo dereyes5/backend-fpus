@@ -319,6 +319,8 @@ const obtenerHistorialBenefactor = async (req, res) => {
     const result = await client.query(`
       SELECT * FROM historial_aportes_mensuales 
       WHERE id_benefactor = $1
+        AND anio IS NOT NULL 
+        AND mes IS NOT NULL
       ORDER BY anio DESC, mes DESC
     `, [id]);
 
