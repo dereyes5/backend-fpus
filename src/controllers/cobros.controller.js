@@ -199,11 +199,6 @@ const obtenerNoAportados = async (req, res) => {
     client.release();
   }
 };
-    });
-  } finally {
-    client.release();
-  }
-};
 
 /**
  * Obtener benefactores que SÍ han aportado este mes
