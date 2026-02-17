@@ -76,9 +76,11 @@ const obtenerRegistrosPendientes = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const result = await client.query(
-      `SELECT * FROM benefactores 
-       WHERE estado_registro = 'PENDIENTE'
-       ORDER BY id_benefactor DESC
+      `SELECT b.*, u.nombre_usuario as ejecutivo 
+       FROM benefactores b
+       LEFT JOIN usuarios u ON b.id_usuario = u.id_usuario
+       WHERE b.estado_registro = 'PENDIENTE'
+       ORDER BY b.id_benefactor DESC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
