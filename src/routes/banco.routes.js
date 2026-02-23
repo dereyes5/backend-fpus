@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const bancoController = require('../controllers/banco.controller');
-const authMiddleware = require('../middleware/auth.middleware');
+const { verificarToken } = require('../middleware/auth.middleware');
 const permisosMiddleware = require('../middleware/permisos.middleware');
 
 // Todas las rutas requieren autenticación
-router.use(authMiddleware);
+router.use(verificarToken);
 
 /**
  * @route   GET /api/bancos
