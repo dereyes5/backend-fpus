@@ -683,6 +683,57 @@ const eliminarContrato = async (req, res) => {
   }
 };
 
+/**
+ * Obtener TODOS los titulares del sistema (para dropdown de dependientes)
+ */
+const obtenerTodosTitulares = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id_usuario } = req.usuario;
+    
+    logger.debug('Fetching all titulares for dropdown', {
+      userId: id_usuario,
+    });
+    
+    // Obtener TODOS los titulares del sistema, sin importar el usuario
+    const query = `
+      SELECT 
+        id_benefactor,
+        nombre_completo,
+        n_convenio,
+        cedula,
+        id_usuario
+      FROM benefactores 
+      WHERE tipo_benefactor = 'TITULAR'
+      ORDER BY nombre_completo ASC
+    `;
+
+    const result = await client.query(query);
+
+    logger.info('All titulares fetched for dropdown', {
+      userId: id_usuario,
+      count: result.rows.length,
+    });
+
+    res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    logger.logError(error, {
+      action: 'obtenerTodosTitulares',
+      userId: req.usuario?.id_usuario,
+    });
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener titulares',
+      error: error.message,
+    });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   obtenerBenefactores,
   obtenerBenefactorPorId,
@@ -691,6 +742,7 @@ module.exports = {
   eliminarBenefactor,
   asignarDependiente,
   obtenerDependientes,
+  obtenerTodosTitulares,
   subirContrato,
   obtenerContrato,
   eliminarContrato,

@@ -39,6 +39,9 @@ const upload = multer({
 // Todas las rutas de benefactores requieren autenticación
 router.use(verificarToken);
 
+// Ruta para obtener todos los titulares (debe ir antes de /:id)
+router.get('/titulares', benefactorController.obtenerTodosTitulares);
+
 router.get('/', benefactorController.obtenerBenefactores);
 router.get('/:id', benefactorController.obtenerBenefactorPorId);
 router.post('/', createBenefactorDto, validarResultado, benefactorController.crearBenefactor);

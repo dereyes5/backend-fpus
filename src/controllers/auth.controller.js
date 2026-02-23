@@ -2,6 +2,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
 const logger = require('../config/logger');
+const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const login = async (req, res) => {
@@ -438,6 +440,144 @@ const listarUsuarios = async (req, res) => {
   }
 };
 
+/**
+ * Subir o actualizar foto de perfil
+ */
+const subirFotoPerfil = async (req, res) => {
+  try {
+    const idUsuario = req.usuario.id_usuario;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se proporcionó ninguna imagen',
+      });
+    }
+
+    logger.info('Foto de perfil subida exitosamente', {
+      userId: idUsuario,
+      fileName: req.file.filename,
+      size: req.file.size,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Foto de perfil actualizada exitosamente',
+      data: {
+        filename: req.file.filename,
+      },
+    });
+  } catch (error) {
+    logger.logError(error, {
+      userId: req.usuario?.id_usuario,
+      action: 'subirFotoPerfil',
+    });
+    res.status(500).json({
+      success: false,
+      message: 'Error al subir la foto de perfil',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Obtener foto de perfil
+ */
+const obtenerFotoPerfil = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const uploadPath = path.join(__dirname, '../../uploads/fotos-perfil');
+
+    // Buscar archivo que comience con usuario_${id} y tenga extensión de imagen
+    const archivos = fs.readdirSync(uploadPath);
+    const archivoUsuario = archivos.find(file => 
+      file.startsWith(`usuario_${id}.`) && 
+      /\.(jpg|jpeg|png|webp)$/i.test(file)
+    );
+
+    if (!archivoUsuario) {
+      return res.status(404).json({
+        success: false,
+        message: 'Foto de perfil no encontrada',
+      });
+    }
+
+    const filePath = path.join(uploadPath, archivoUsuario);
+    
+    // Verificar que el archivo existe
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Foto de perfil no encontrada',
+      });
+    }
+
+    logger.debug('Foto de perfil solicitada', {
+      userId: id,
+      file: archivoUsuario,
+    });
+
+    res.sendFile(filePath);
+  } catch (error) {
+    logger.logError(error, {
+      userId: req.params.id,
+      action: 'obtenerFotoPerfil',
+    });
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener la foto de perfil',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Eliminar foto de perfil
+ */
+const eliminarFotoPerfil = async (req, res) => {
+  try {
+    const idUsuario = req.usuario.id_usuario;
+    const uploadPath = path.join(__dirname, '../../uploads/fotos-perfil');
+
+    // Buscar archivo que comience con usuario_${idUsuario}
+    const archivos = fs.readdirSync(uploadPath);
+    const archivoUsuario = archivos.find(file => 
+      file.startsWith(`usuario_${idUsuario}.`) && 
+      /\.(jpg|jpeg|png|webp)$/i.test(file)
+    );
+
+    if (!archivoUsuario) {
+      return res.status(404).json({
+        success: false,
+        message: 'No hay foto de perfil para eliminar',
+      });
+    }
+
+    const filePath = path.join(uploadPath, archivoUsuario);
+    fs.unlinkSync(filePath);
+
+    logger.info('Foto de perfil eliminada', {
+      userId: idUsuario,
+      fileName: archivoUsuario,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Foto de perfil eliminada exitosamente',
+    });
+  } catch (error) {
+    logger.logError(error, {
+      userId: req.usuario?.id_usuario,
+      action: 'eliminarFotoPerfil',
+    });
+    res.status(500).json({
+      success: false,
+      message: 'Error al eliminar la foto de perfil',
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   login,
   crearUsuario,
@@ -445,4 +585,7 @@ module.exports = {
   obtenerPerfil,
   cambiarPassword,
   listarUsuarios,
+  subirFotoPerfil,
+  obtenerFotoPerfil,
+  eliminarFotoPerfil,
 };
