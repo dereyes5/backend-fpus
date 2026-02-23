@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const bancoController = require('../controllers/banco.controller');
-const { verificarToken } = require('../middleware/auth.middleware');
-const permisosMiddleware = require('../middleware/permisos.middleware');
+const { verificarToken, verificarPermiso } = require('../middleware/auth.middleware');
 
 // Todas las rutas requieren autenticación
 router.use(verificarToken);
@@ -26,20 +25,20 @@ router.get('/:id', bancoController.getById);
  * @desc    Crear un nuevo banco
  * @access  Privado (requiere permisos de configuración)
  */
-router.post('/', permisosMiddleware('configuraciones'), bancoController.create);
+router.post('/', verificarPermiso('configuraciones'), bancoController.create);
 
 /**
  * @route   PUT /api/bancos/:id
  * @desc    Actualizar un banco
  * @access  Privado (requiere permisos de configuración)
  */
-router.put('/:id', permisosMiddleware('configuraciones'), bancoController.update);
+router.put('/:id', verificarPermiso('configuraciones'), bancoController.update);
 
 /**
  * @route   DELETE /api/bancos/:id
  * @desc    Eliminar un banco
  * @access  Privado (requiere permisos de configuración)
  */
-router.delete('/:id', permisosMiddleware('configuraciones'), bancoController.deleteBanco);
+router.delete('/:id', verificarPermiso('configuraciones'), bancoController.deleteBanco);
 
 module.exports = router;
