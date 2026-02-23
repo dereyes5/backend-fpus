@@ -9,6 +9,7 @@ const aprobacionRoutes = require('./aprobacion.routes');
 const cobrosRoutes = require('./cobros.routes');
 const permisosRoutes = require('./permisos.routes');
 const sucursalRoutes = require('./sucursal.routes');
+const bancoRoutes = require('./banco.routes');
 
 // Usar rutas
 router.use('/auth', authRoutes);
@@ -18,5 +19,6 @@ router.use('/aprobaciones', aprobacionRoutes);
 router.use('/cobros', cobrosRoutes);
 router.use('/permisos', permisosRoutes);
 router.use('/sucursales', sucursalRoutes);
+router.use('/bancos', bancoRoutes);
 
 module.exports = router;
