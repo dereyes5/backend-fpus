@@ -18,7 +18,10 @@ const obtenerBenefactores = async (req, res) => {
       permisos,
     });
     
-    let query = 'SELECT * FROM benefactores WHERE 1=1';
+    let query = `SELECT b.*, rd.id_titular 
+                 FROM benefactores b 
+                 LEFT JOIN relaciones_dependientes rd ON b.id_benefactor = rd.id_dependiente 
+                 WHERE 1=1`;
     const params = [];
     let paramCount = 1;
 
@@ -30,7 +33,7 @@ const obtenerBenefactores = async (req, res) => {
 
     if (tieneEscritura) {
       // Si tiene escritura, solo ve los suyos
-      query += ` AND id_usuario = $${paramCount}`;
+      query += ` AND b.id_usuario = $${paramCount}`;
       params.push(id_usuario);
       paramCount++;
       logger.debug('Filtering by user (has write permission)', { userId: id_usuario });
@@ -40,18 +43,18 @@ const obtenerBenefactores = async (req, res) => {
     }
 
     if (tipo_benefactor) {
-      query += ` AND tipo_benefactor = $${paramCount}`;
+      query += ` AND b.tipo_benefactor = $${paramCount}`;
       params.push(tipo_benefactor);
       paramCount++;
     }
 
     if (estado_registro) {
-      query += ` AND estado_registro = $${paramCount}`;
+      query += ` AND b.estado_registro = $${paramCount}`;
       params.push(estado_registro);
       paramCount++;
     }
 
-    query += ' ORDER BY id_benefactor DESC';
+    query += ' ORDER BY b.id_benefactor DESC';
 
     // Paginación
     const offset = (page - 1) * limit;
@@ -61,24 +64,24 @@ const obtenerBenefactores = async (req, res) => {
     const result = await client.query(query, params);
 
     // Contar total con el mismo filtro
-    let countQuery = 'SELECT COUNT(*) as total FROM benefactores WHERE 1=1';
+    let countQuery = 'SELECT COUNT(*) as total FROM benefactores b WHERE 1=1';
     const countParams = [];
     let countParamCount = 1;
 
     if (tieneEscritura) {
-      countQuery += ` AND id_usuario = $${countParamCount}`;
+      countQuery += ` AND b.id_usuario = $${countParamCount}`;
       countParams.push(id_usuario);
       countParamCount++;
     }
 
     if (tipo_benefactor) {
-      countQuery += ` AND tipo_benefactor = $${countParamCount}`;
+      countQuery += ` AND b.tipo_benefactor = $${countParamCount}`;
       countParams.push(tipo_benefactor);
       countParamCount++;
     }
 
     if (estado_registro) {
-      countQuery += ` AND estado_registro = $${countParamCount}`;
+      countQuery += ` AND b.estado_registro = $${countParamCount}`;
       countParams.push(estado_registro);
     }
 
@@ -149,13 +152,13 @@ const obtenerBenefactorPorId = async (req, res) => {
     // Si es dependiente, obtener su titular
     if (benefactor.tipo_benefactor === 'DEPENDIENTE') {
       const titularResult = await client.query(
-        `SELECT b.* FROM benefactores b
+        `SELECT b.id_benefactor, rd.id_titular FROM benefactores b
          INNER JOIN relaciones_dependientes rd ON b.id_benefactor = rd.id_titular
          WHERE rd.id_dependiente = $1`,
         [id]
       );
       if (titularResult.rows.length > 0) {
-        benefactor.titular = titularResult.rows[0];
+        benefactor.id_titular = titularResult.rows[0].id_titular;
       }
     }
 
