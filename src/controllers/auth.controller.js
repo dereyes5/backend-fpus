@@ -54,7 +54,8 @@ const login = async (req, res) => {
         social_lectura,
         social_escritura,
         configuraciones,
-        aprobaciones
+        aprobaciones,
+        aprobaciones_social
        FROM permisos_usuario
        WHERE id_usuario = $1`,
       [usuario.id_usuario]
@@ -77,6 +78,7 @@ const login = async (req, res) => {
         social_escritura: false,
         configuraciones: false,
         aprobaciones: false,
+        aprobaciones_social: false,
       };
     } else {
       permisos = permisosResult.rows[0];
@@ -193,6 +195,7 @@ const asignarPermisos = async (req, res) => {
       social_escritura,
       configuraciones,
       aprobaciones,
+      aprobaciones_social,
     } = req.body;
 
     // Verificar que el usuario existe
@@ -219,8 +222,9 @@ const asignarPermisos = async (req, res) => {
         social_lectura,
         social_escritura,
         configuraciones,
-        aprobaciones
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        aprobaciones,
+        aprobaciones_social
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (id_usuario) 
       DO UPDATE SET
         cartera_lectura = $2,
@@ -231,6 +235,7 @@ const asignarPermisos = async (req, res) => {
         social_escritura = $7,
         configuraciones = $8,
         aprobaciones = $9,
+        aprobaciones_social = $10,
         fecha_actualizacion = NOW()`,
       [
         id_usuario,
@@ -242,6 +247,7 @@ const asignarPermisos = async (req, res) => {
         social_escritura || false,
         configuraciones || false,
         aprobaciones || false,
+        aprobaciones_social || false,
       ]
     );
 
@@ -289,7 +295,8 @@ const obtenerPerfil = async (req, res) => {
         social_lectura,
         social_escritura,
         configuraciones,
-        aprobaciones
+        aprobaciones,
+        aprobaciones_social
        FROM permisos_usuario
        WHERE id_usuario = $1`,
       [id_usuario]
@@ -306,6 +313,7 @@ const obtenerPerfil = async (req, res) => {
           social_escritura: false,
           configuraciones: false,
           aprobaciones: false,
+          aprobaciones_social: false,
         };
 
     res.json({
@@ -414,7 +422,8 @@ const listarUsuarios = async (req, res) => {
               'social_lectura', p.social_lectura,
               'social_escritura', p.social_escritura,
               'configuraciones', p.configuraciones,
-              'aprobaciones', p.aprobaciones
+              'aprobaciones', p.aprobaciones,
+              'aprobaciones_social', p.aprobaciones_social
             )
           ELSE NULL
         END as permisos
