@@ -108,6 +108,20 @@ const normalizarNombreColumna = (columna) => {
 };
 
 /**
+ * Normaliza la forma de pago del banco a un valor estándar
+ * El banco envía descripciones largas como "CREDITO EN OTROS BANCO"
+ * las mapeamos a: CREDITO | DEBITO | TRANSFERENCIA | EFECTIVO
+ */
+const normalizarFormaPago = (valor) => {
+  if (!valor) return 'DEBITO';
+  const v = valor.toString().toUpperCase().trim();
+  if (v.includes('CREDITO') || v.includes('CRÉDITO')) return 'CREDITO';
+  if (v.includes('TRANSFERENCIA')) return 'TRANSFERENCIA';
+  if (v.includes('EFECTIVO')) return 'EFECTIVO';
+  return 'DEBITO'; // DEBITO es el default para débitos bancarios
+};
+
+/**
  * Parsea una fecha del Excel (puede venir como número de serie, string, o Date)
  * @param {any} valor - Valor de fecha del Excel
  * @returns {Date|null} Fecha parseada o null
@@ -227,7 +241,7 @@ const procesarArchivoExcel = (buffer, nombreArchivo) => {
         fila_excel: index + 2, // +2 porque Excel empieza en 1 y la fila 1 es el encabezado
         estado_raw: filaNormalizada.estado?.toString().trim() || '',
         moneda: filaNormalizada.moneda?.toString().trim() || 'DOLAR',
-        forma_pago: filaNormalizada.forma_pago?.toString().trim() || 'DEBITO',
+        forma_pago: normalizarFormaPago(filaNormalizada.forma_pago),
         valor_cobrado: parseFloat(filaNormalizada.valor_cobrado) || 0,
         cod_tercero: filaNormalizada.cod_tercero?.toString().trim() || '',
         nom_terc: filaNormalizada.nom_terc?.toString().trim() || '',
