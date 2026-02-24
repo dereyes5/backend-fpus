@@ -117,19 +117,36 @@ const parsearFechaExcel = (valor) => {
 
   // Si ya es una fecha
   if (valor instanceof Date) {
-    return valor;
+    return isNaN(valor.getTime()) ? null : valor;
   }
 
   // Si es número de serie de Excel (días desde 1900-01-01)
   if (typeof valor === 'number') {
     const fecha = new Date((valor - 25569) * 86400 * 1000);
-    return fecha;
+    return isNaN(fecha.getTime()) ? null : fecha;
   }
 
   // Si es string, intentar parsear
   if (typeof valor === 'string') {
-    // Formatos comunes: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD
-    const fecha = new Date(valor);
+    const s = valor.trim();
+
+    // Formato DD/MM/YYYY o DD-MM-YYYY (el más común en bancos ecuatorianos)
+    const dmyMatch = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+    if (dmyMatch) {
+      const [, d, m, y] = dmyMatch;
+      const fecha = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+      return isNaN(fecha.getTime()) ? null : fecha;
+    }
+
+    // Formato YYYY-MM-DD (ISO)
+    const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (isoMatch) {
+      const fecha = new Date(s);
+      return isNaN(fecha.getTime()) ? null : fecha;
+    }
+
+    // Último intento con el constructor nativo
+    const fecha = new Date(s);
     if (!isNaN(fecha.getTime())) {
       return fecha;
     }
@@ -192,11 +209,8 @@ const procesarArchivoExcel = (buffer, nombreArchivo) => {
 
     // Log de diagnóstico: mostrar columnas que llegan del Excel
     const columnasOriginales = Object.keys(filas[0]);
-    const columnasNormalizadas = columnasOriginales.map(c => ({
-      original: c,
-      normalizado: normalizarNombreColumna(c)
-    }));
-    console.log('[Excel] Columnas detectadas:', JSON.stringify(columnasNormalizadas, null, 2));
+    const columnasNormalizadas = columnasOriginales.map(c => `"${c}"→"${normalizarNombreColumna(c)}"`).join(', ');
+    console.log('[Excel] Columnas detectadas:', columnasNormalizadas);
     const colFechaTrans = columnasOriginales.find(c => normalizarNombreColumna(c) === 'fecha_transmision');
     console.log('[Excel] Col fecha_transmision encontrada:', colFechaTrans, '| Valor raw fila 1:', filas[0][colFechaTrans]);
 
