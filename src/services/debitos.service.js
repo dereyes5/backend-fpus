@@ -23,7 +23,7 @@ const generarHashArchivo = (buffer) => {
  */
 const normalizarNombreColumna = (columna) => {
   if (!columna) return '';
-  
+
   // Convertir a minúsculas y eliminar caracteres especiales
   let normalizado = columna.toString().toLowerCase()
     .replace(/\s+/g, '_')           // Espacios a guiones bajos
@@ -34,38 +34,76 @@ const normalizarNombreColumna = (columna) => {
     .replace(/[óòöô]/g, 'o')
     .replace(/[úùüû]/g, 'u')
     .replace(/ñ/g, 'n')
-    .replace(/[^a-z0-9_]/g, '');   // Eliminar caracteres no alfanuméricos
-  
+    .replace(/[^a-z0-9_]/g, '')    // Eliminar caracteres no alfanuméricos
+    .replace(/_+/g, '_')           // Colapsar múltiples guiones bajos
+    .replace(/^_|_$/g, '');        // Quitar guiones al inicio/fin
+
   // Mapeo de nombres comunes del Excel a nombres estándar
   const mapeo = {
+    // Estado del cobro
     'estado': 'estado',
+
+    // Moneda
     'moneda': 'moneda',
+
+    // Forma de pago — varios formatos
     'forma': 'forma_pago',
+    'forma_pago': 'forma_pago',
+    'formapago': 'forma_pago',
+
+    // Valor cobrado
     'valor': 'valor_cobrado',
+    'valor_cobrado': 'valor_cobrado',
+
+    // Código de tercero (N° convenio) — Excel a veces trunca a "cod.tercer" o "cod_tercer"
     'cod_tercero': 'cod_tercero',
+    'cod_tercer': 'cod_tercero',   // Truncado
     'codtercero': 'cod_tercero',
     'cod__tercero': 'cod_tercero',
+    'cod_terc': 'cod_tercero',
+
+    // Nombre tercero
     'nom_terc': 'nom_terc',
     'nomterc': 'nom_terc',
     'nom__terc': 'nom_terc',
+    'nom_tercero': 'nom_terc',
+
+    // Fecha transmisión — muchas variantes del Excel bancario
     'fecha_transmision': 'fecha_transmision',
     'fechatransmision': 'fecha_transmision',
     'fecha__transmision': 'fecha_transmision',
     'fch_transmision': 'fecha_transmision',
+    'fch_transm': 'fecha_transmision',
+    'fecha_tra': 'fecha_transmision',   // Truncado frecuente
+    'fecha_transm': 'fecha_transmision',
+    'fch_tra': 'fecha_transmision',
+    'fecha_trasm': 'fecha_transmision',
+
+    // Banco
     'banco': 'banco',
+    'banco_pld': 'banco',              // Variante del encabezado real
+
+    // Tipo de cuenta
     'tipo_cta': 'tipo_cuenta',
     'tipocta': 'tipo_cuenta',
     'tipo__cta': 'tipo_cuenta',
+    'tipo_cuenta': 'tipo_cuenta',
+
+    // Número de cuenta
     'num_cta': 'num_cuenta',
     'numcta': 'num_cuenta',
     'num__cta': 'num_cuenta',
+    'num_cuenta': 'num_cuenta',
+
+    // Fecha pago — muchas variantes
     'fch_pago': 'fecha_pago',
     'fchpago': 'fecha_pago',
     'fch__pago': 'fecha_pago',
     'fecha_pago': 'fecha_pago',
-    'fechapago': 'fecha_pago'
+    'fechapago': 'fecha_pago',
+    'fch_pago_26': 'fecha_pago',       // A veces el banco pone sufijo numérico
   };
-  
+
   return mapeo[normalizado] || normalizado;
 };
 
@@ -76,18 +114,18 @@ const normalizarNombreColumna = (columna) => {
  */
 const parsearFechaExcel = (valor) => {
   if (!valor) return null;
-  
+
   // Si ya es una fecha
   if (valor instanceof Date) {
     return valor;
   }
-  
+
   // Si es número de serie de Excel (días desde 1900-01-01)
   if (typeof valor === 'number') {
     const fecha = new Date((valor - 25569) * 86400 * 1000);
     return fecha;
   }
-  
+
   // Si es string, intentar parsear
   if (typeof valor === 'string') {
     // Formatos comunes: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD
@@ -96,7 +134,7 @@ const parsearFechaExcel = (valor) => {
       return fecha;
     }
   }
-  
+
   return null;
 };
 
@@ -111,10 +149,10 @@ const validarColumnasExcel = (primeraFila) => {
     'cod_tercero',
     'fecha_transmision'
   ];
-  
+
   const columnasExcel = Object.keys(primeraFila).map(normalizarNombreColumna);
   const columnasFaltantes = columnasRequeridas.filter(col => !columnasExcel.includes(col));
-  
+
   return {
     valido: columnasFaltantes.length === 0,
     columnasEncontradas: columnasExcel,
@@ -132,18 +170,18 @@ const procesarArchivoExcel = (buffer, nombreArchivo) => {
   try {
     // Leer el Excel
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-    
+
     // Obtener la primera hoja
     const nombreHoja = workbook.SheetNames[0];
     const hoja = workbook.Sheets[nombreHoja];
-    
+
     // Convertir a JSON
     let filas = XLSX.utils.sheet_to_json(hoja, { defval: null });
-    
+
     if (filas.length === 0) {
       throw new Error('El archivo Excel está vacío');
     }
-    
+
     // Validar columnas
     const validacion = validarColumnasExcel(filas[0]);
     if (!validacion.valido) {
@@ -151,16 +189,26 @@ const procesarArchivoExcel = (buffer, nombreArchivo) => {
         `El Excel no tiene las columnas requeridas. Faltantes: ${validacion.columnasFaltantes.join(', ')}`
       );
     }
-    
+
+    // Log de diagnóstico: mostrar columnas que llegan del Excel
+    const columnasOriginales = Object.keys(filas[0]);
+    const columnasNormalizadas = columnasOriginales.map(c => ({
+      original: c,
+      normalizado: normalizarNombreColumna(c)
+    }));
+    console.log('[Excel] Columnas detectadas:', JSON.stringify(columnasNormalizadas, null, 2));
+    const colFechaTrans = columnasOriginales.find(c => normalizarNombreColumna(c) === 'fecha_transmision');
+    console.log('[Excel] Col fecha_transmision encontrada:', colFechaTrans, '| Valor raw fila 1:', filas[0][colFechaTrans]);
+
     // Normalizar datos
     const datosNormalizados = filas.map((fila, index) => {
       const filaNormalizada = {};
-      
+
       Object.keys(fila).forEach(columna => {
         const nombreNormalizado = normalizarNombreColumna(columna);
         filaNormalizada[nombreNormalizado] = fila[columna];
       });
-      
+
       return {
         fila_excel: index + 2, // +2 porque Excel empieza en 1 y la fila 1 es el encabezado
         estado_raw: filaNormalizada.estado?.toString() || '',
@@ -177,7 +225,7 @@ const procesarArchivoExcel = (buffer, nombreArchivo) => {
         observaciones: filaNormalizada.observaciones?.toString() || null
       };
     });
-    
+
     return {
       nombreArchivo,
       nombreHoja,
@@ -185,7 +233,7 @@ const procesarArchivoExcel = (buffer, nombreArchivo) => {
       datos: datosNormalizados,
       hash: generarHashArchivo(buffer)
     };
-    
+
   } catch (error) {
     throw new Error(`Error al procesar Excel: ${error.message}`);
   }
@@ -199,7 +247,7 @@ const procesarArchivoExcel = (buffer, nombreArchivo) => {
 const detectarPeriodoLote = (datos) => {
   // Buscar la fecha de transmisión más común
   const conteoFechas = {};
-  
+
   datos.forEach(registro => {
     if (registro.fecha_transmision) {
       const mes = registro.fecha_transmision.getMonth() + 1;
@@ -208,14 +256,23 @@ const detectarPeriodoLote = (datos) => {
       conteoFechas[clave] = (conteoFechas[clave] || 0) + 1;
     }
   });
-  
+
+  const claves = Object.keys(conteoFechas);
+
+  if (claves.length === 0) {
+    throw new Error(
+      'No se encontraron fechas de transmisión válidas en el archivo. ' +
+      'Verifique que el Excel tenga registros con fecha_transmision correctamente formateada.'
+    );
+  }
+
   // Obtener el periodo más frecuente
-  const periodoMasFrecuente = Object.keys(conteoFechas).reduce((a, b) => 
+  const periodoMasFrecuente = claves.reduce((a, b) =>
     conteoFechas[a] > conteoFechas[b] ? a : b
   );
-  
+
   const [anio, mes] = periodoMasFrecuente.split('-').map(Number);
-  
+
   return { mes, anio };
 };
 
@@ -228,30 +285,30 @@ const detectarPeriodoLote = (datos) => {
  */
 const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
   const client = await pool.connect();
-  
+
   try {
     // 1. Procesar el archivo Excel
     const excel = procesarArchivoExcel(buffer, nombreArchivo);
-    
+
     // 2. Detectar periodo
     const { mes, anio } = detectarPeriodoLote(excel.datos);
-    
+
     // 3. Verificar si el archivo ya fue importado
     const existente = await client.query(
       'SELECT id_lote, nombre_archivo, fecha_importacion FROM lotes_importacion WHERE hash_archivo = $1',
       [excel.hash]
     );
-    
+
     if (existente.rows.length > 0) {
       throw new Error(
         `Este archivo ya fue importado el ${new Date(existente.rows[0].fecha_importacion).toLocaleString('es-EC')} ` +
         `con el nombre "${existente.rows[0].nombre_archivo}"`
       );
     }
-    
+
     // 4. Iniciar transacción
     await client.query('BEGIN');
-    
+
     // 5. Crear registro del lote
     const loteResult = await client.query(
       `INSERT INTO lotes_importacion (
@@ -261,14 +318,14 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
       RETURNING id_lote, mes_proceso, anio_proceso`,
       [nombreArchivo, excel.hash, mes, anio, excel.totalFilas, idUsuario]
     );
-    
+
     const idLote = loteResult.rows[0].id_lote;
-    
+
     // 6. Insertar registros de cobros
     let insertadosExitosos = 0;
     let insertadosFallidos = 0;
     const errores = [];
-    
+
     for (const dato of excel.datos) {
       try {
         // Buscar titular por cod_tercero (n_convenio)
@@ -281,7 +338,7 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
            LIMIT 1`,
           [dato.cod_tercero]
         );
-        
+
         if (titularResult.rows.length === 0) {
           errores.push({
             fila: dato.fila_excel,
@@ -291,9 +348,9 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
           insertadosFallidos++;
           continue;
         }
-        
+
         const idBenefactor = titularResult.rows[0].id_benefactor;
-        
+
         // Insertar cobro
         await client.query(
           `INSERT INTO cobros (
@@ -325,9 +382,9 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
             dato.fila_excel
           ]
         );
-        
+
         insertadosExitosos++;
-        
+
       } catch (error) {
         errores.push({
           fila: dato.fila_excel,
@@ -337,18 +394,18 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
         insertadosFallidos++;
       }
     }
-    
+
     // 7. Procesar el lote (normalizar estados y propagar a dependientes)
     const procesamientoResult = await client.query(
       'SELECT * FROM procesar_lote_debitos($1)',
       [idLote]
     );
-    
+
     const procesamiento = procesamientoResult.rows[0];
-    
+
     // 8. Commit de la transacción
     await client.query('COMMIT');
-    
+
     // 9. Retornar resultado
     return {
       success: true,
@@ -370,7 +427,7 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
       },
       errores: errores.length > 0 ? errores : null
     };
-    
+
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -386,7 +443,7 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
  */
 const obtenerLotesImportados = async (filtros = {}) => {
   const { mes, anio, limit = 50, offset = 0 } = filtros;
-  
+
   let query = `
     SELECT 
       l.id_lote,
@@ -405,28 +462,28 @@ const obtenerLotesImportados = async (filtros = {}) => {
     LEFT JOIN cobros c ON c.id_lote_importacion = l.id_lote
     WHERE 1=1
   `;
-  
+
   const params = [];
   let paramIndex = 1;
-  
+
   if (mes) {
     params.push(mes);
     query += ` AND l.mes_proceso = $${paramIndex++}`;
   }
-  
+
   if (anio) {
     params.push(anio);
     query += ` AND l.anio_proceso = $${paramIndex++}`;
   }
-  
+
   query += `
     GROUP BY l.id_lote, u.nombre_usuario
     ORDER BY l.fecha_importacion DESC
     LIMIT $${paramIndex++} OFFSET $${paramIndex++}
   `;
-  
+
   params.push(limit, offset);
-  
+
   const result = await pool.query(query, params);
   return result.rows;
 };
@@ -438,7 +495,7 @@ const obtenerLotesImportados = async (filtros = {}) => {
  */
 const obtenerDetalleLote = async (idLote) => {
   const client = await pool.connect();
-  
+
   try {
     // Información del lote
     const loteResult = await client.query(
@@ -450,11 +507,11 @@ const obtenerDetalleLote = async (idLote) => {
       WHERE l.id_lote = $1`,
       [idLote]
     );
-    
+
     if (loteResult.rows.length === 0) {
       throw new Error('Lote no encontrado');
     }
-    
+
     // Registros de cobros del lote
     const cobrosResult = await client.query(
       `SELECT 
@@ -478,7 +535,7 @@ const obtenerDetalleLote = async (idLote) => {
       ORDER BY c.fila_excel`,
       [idLote]
     );
-    
+
     // Estados generados del lote
     const estadosResult = await client.query(
       `SELECT 
@@ -491,13 +548,13 @@ const obtenerDetalleLote = async (idLote) => {
       ORDER BY e.es_titular DESC, b.nombre_completo`,
       [idLote]
     );
-    
+
     return {
       lote: loteResult.rows[0],
       cobros: cobrosResult.rows,
       estados: estadosResult.rows
     };
-    
+
   } finally {
     client.release();
   }
