@@ -392,6 +392,8 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
           [dato.cod_tercero]
         );
 
+        console.log(`[Import] titularResult.rows (${titularResult.rows.length}):`, JSON.stringify(titularResult.rows));
+
         if (titularResult.rows.length === 0) {
           await client.query('RELEASE SAVEPOINT sp_fila');
           errores.push({
@@ -442,6 +444,7 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
 
       } catch (error) {
         // Revertir solo esta fila, mantener la transacción activa
+        console.error(`[Import] ERROR en fila ${dato.fila_excel}:`, error.message, '| code:', error.code);
         await client.query('ROLLBACK TO SAVEPOINT sp_fila');
         await client.query('RELEASE SAVEPOINT sp_fila');
         errores.push({
