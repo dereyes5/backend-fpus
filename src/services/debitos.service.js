@@ -301,13 +301,15 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
   const client = await pool.connect();
 
   try {
-    // 1. Procesar el archivo Excel
+    console.log('[Import] PASO 1: Procesando Excel...');
     const excel = procesarArchivoExcel(buffer, nombreArchivo);
+    console.log(`[Import] PASO 1 OK: ${excel.totalFilas} filas, hash: ${excel.hash.substring(0, 12)}...`);
 
-    // 2. Detectar periodo
+    console.log('[Import] PASO 2: Detectando periodo...');
     const { mes, anio } = detectarPeriodoLote(excel.datos);
+    console.log(`[Import] PASO 2 OK: periodo ${mes}/${anio}`);
 
-    // 3. Verificar si el archivo ya fue importado
+    console.log('[Import] PASO 3: Verificando duplicado...');
     const existente = await client.query(
       'SELECT id_lote, nombre_archivo, fecha_importacion FROM lotes_importacion WHERE hash_archivo = $1',
       [excel.hash]
@@ -320,10 +322,12 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
       );
     }
 
-    // 4. Iniciar transacción
+    console.log('[Import] PASO 3 OK: no es duplicado');
+
+    console.log('[Import] PASO 4: Iniciando transacción...');
     await client.query('BEGIN');
 
-    // 5. Crear registro del lote
+    console.log(`[Import] PASO 5: Insertando lote (usuario=${idUsuario})...`);
     const loteResult = await client.query(
       `INSERT INTO lotes_importacion (
         nombre_archivo, hash_archivo, mes_proceso, anio_proceso,
@@ -334,6 +338,7 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
     );
 
     const idLote = loteResult.rows[0].id_lote;
+    console.log(`[Import] PASO 5 OK: id_lote=${idLote}`);
 
     // 6. Insertar registros de cobros
     let insertadosExitosos = 0;
@@ -409,16 +414,20 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
       }
     }
 
-    // 7. Procesar el lote (normalizar estados y propagar a dependientes)
+    console.log(`[Import] PASO 6 OK: insertados=${insertadosExitosos}, fallidos=${insertadosFallidos}, errores=${errores.length}`);
+
+    console.log(`[Import] PASO 7: Llamando procesar_lote_debitos(${idLote})...`);
     const procesamientoResult = await client.query(
       'SELECT * FROM procesar_lote_debitos($1)',
       [idLote]
     );
+    console.log('[Import] PASO 7 OK:', JSON.stringify(procesamientoResult.rows[0]));
 
     const procesamiento = procesamientoResult.rows[0];
 
-    // 8. Commit de la transacción
+    console.log('[Import] PASO 8: Haciendo COMMIT...');
     await client.query('COMMIT');
+    console.log('[Import] PASO 8 OK: importación completa');
 
     // 9. Retornar resultado
     return {
