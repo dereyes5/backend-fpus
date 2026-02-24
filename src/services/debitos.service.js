@@ -225,18 +225,18 @@ const procesarArchivoExcel = (buffer, nombreArchivo) => {
 
       return {
         fila_excel: index + 2, // +2 porque Excel empieza en 1 y la fila 1 es el encabezado
-        estado_raw: filaNormalizada.estado?.toString() || '',
-        moneda: filaNormalizada.moneda?.toString() || 'DOLAR',
-        forma_pago: filaNormalizada.forma_pago?.toString() || 'DEBITO',
+        estado_raw: filaNormalizada.estado?.toString().trim() || '',
+        moneda: filaNormalizada.moneda?.toString().trim() || 'DOLAR',
+        forma_pago: filaNormalizada.forma_pago?.toString().trim() || 'DEBITO',
         valor_cobrado: parseFloat(filaNormalizada.valor_cobrado) || 0,
-        cod_tercero: filaNormalizada.cod_tercero?.toString() || '',
-        nom_terc: filaNormalizada.nom_terc?.toString() || '',
+        cod_tercero: filaNormalizada.cod_tercero?.toString().trim() || '',
+        nom_terc: filaNormalizada.nom_terc?.toString().trim() || '',
         fecha_transmision: parsearFechaExcel(filaNormalizada.fecha_transmision),
         fecha_pago: parsearFechaExcel(filaNormalizada.fecha_pago || filaNormalizada.fecha_transmision),
-        banco: filaNormalizada.banco?.toString() || '',
-        tipo_cuenta: filaNormalizada.tipo_cuenta?.toString() || 'DEBITO',
-        num_cuenta: filaNormalizada.num_cuenta?.toString() || '',
-        observaciones: filaNormalizada.observaciones?.toString() || null
+        banco: filaNormalizada.banco?.toString().trim() || '',
+        tipo_cuenta: filaNormalizada.tipo_cuenta?.toString().trim() || 'DEBITO',
+        num_cuenta: filaNormalizada.num_cuenta?.toString().trim() || '',
+        observaciones: filaNormalizada.observaciones?.toString().trim() || null
       };
     });
 
@@ -346,6 +346,9 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
     const errores = [];
 
     for (const dato of excel.datos) {
+      // Usar SAVEPOINT por fila: si falla una query, se revierte solo esa operación
+      // sin abortar la transacción completa (evita error 25P02)
+      await client.query('SAVEPOINT sp_fila');
       try {
         // Buscar titular por cod_tercero (n_convenio)
         const titularResult = await client.query(
@@ -359,6 +362,7 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
         );
 
         if (titularResult.rows.length === 0) {
+          await client.query('RELEASE SAVEPOINT sp_fila');
           errores.push({
             fila: dato.fila_excel,
             cod_tercero: dato.cod_tercero,
@@ -385,14 +389,14 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
             dato.fecha_transmision,
             dato.fecha_pago,
             dato.cod_tercero,
-            dato.estado_raw, // Estado original del banco
-            dato.estado_raw, // Guardamos también en estado_banco_raw
+            dato.estado_raw,
+            dato.estado_raw,
             dato.moneda,
             dato.forma_pago,
             dato.valor_cobrado,
-            'BANCO', // empresa
-            'Cobro', // tipo_movimiento
-            'Ecuador', // pais
+            'BANCO',
+            'Cobro',
+            'Ecuador',
             dato.banco,
             dato.tipo_cuenta,
             dato.num_cuenta,
@@ -402,9 +406,13 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
           ]
         );
 
+        await client.query('RELEASE SAVEPOINT sp_fila');
         insertadosExitosos++;
 
       } catch (error) {
+        // Revertir solo esta fila, mantener la transacción activa
+        await client.query('ROLLBACK TO SAVEPOINT sp_fila');
+        await client.query('RELEASE SAVEPOINT sp_fila');
         errores.push({
           fila: dato.fila_excel,
           cod_tercero: dato.cod_tercero,
