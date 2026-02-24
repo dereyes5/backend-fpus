@@ -354,6 +354,33 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
         const codChars = dato.cod_tercero.split('').map(c => c.charCodeAt(0)).join(',');
         console.log(`[Import] Fila ${dato.fila_excel}: cod_tercero="${dato.cod_tercero}" largo=${dato.cod_tercero.length} charCodes=[${codChars}]`);
 
+        // Diagnóstico: verificar BD activa y resultado hardcodeado
+        const dbInfo = await client.query(`SELECT current_database() as db, current_schema() as schema`);
+        console.log('[Import] BD activa:', dbInfo.rows[0]);
+
+        // Mostrar todos los benefactores con n_convenio similar en la BD
+        const dbBenef = await client.query(
+          `SELECT id_benefactor, nombre_completo, n_convenio, tipo_benefactor, estado_registro,
+                  encode(n_convenio::bytea, 'hex') as hex
+           FROM benefactores 
+           WHERE n_convenio ILIKE $1`,
+          [`%${dato.cod_tercero}%`]
+        );
+        console.log('[Import] Benefactores en BD con convenio similar:', JSON.stringify(dbBenef.rows));
+
+        // Mostrar datos completos que vienen del Excel
+        console.log('[Import] Datos del Excel fila', dato.fila_excel, ':', JSON.stringify(dato));
+
+        const testHard = await client.query(
+          `SELECT id_benefactor, nombre_completo FROM benefactores WHERE n_convenio = 'SD6574' AND tipo_benefactor = 'TITULAR' AND estado_registro = 'APROBADO' LIMIT 1`
+        );
+        console.log('[Import] Test hardcoded SD6574:', testHard.rows);
+        const testParam = await client.query(
+          `SELECT id_benefactor, nombre_completo FROM benefactores WHERE n_convenio = $1 AND tipo_benefactor = 'TITULAR' AND estado_registro = 'APROBADO' LIMIT 1`,
+          [dato.cod_tercero]
+        );
+        console.log('[Import] Test parametrizado:', testParam.rows);
+
         // Buscar titular por cod_tercero (n_convenio)
         const titularResult = await client.query(
           `SELECT id_benefactor, nombre_completo 
