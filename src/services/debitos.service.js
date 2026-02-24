@@ -350,6 +350,10 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
       // sin abortar la transacción completa (evita error 25P02)
       await client.query('SAVEPOINT sp_fila');
       try {
+        // Log diagnóstico: mostrar cod_tercero exacto con códigos de carácter
+        const codChars = dato.cod_tercero.split('').map(c => c.charCodeAt(0)).join(',');
+        console.log(`[Import] Fila ${dato.fila_excel}: cod_tercero="${dato.cod_tercero}" largo=${dato.cod_tercero.length} charCodes=[${codChars}]`);
+
         // Buscar titular por cod_tercero (n_convenio)
         const titularResult = await client.query(
           `SELECT id_benefactor, nombre_completo 
