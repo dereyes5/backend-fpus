@@ -29,4 +29,23 @@ router.get('/historial', cobrosController.obtenerHistorialCompleto);
 router.get('/cobros', cobrosController.obtenerCobros);
 router.post('/cobros', cobrosController.registrarCobros);
 
+// ========================================
+// RUTAS DE DÉBITOS MENSUALES
+// ========================================
+
+// Importar archivo Excel de débitos
+router.post(
+  '/debitos/importar',
+  cobrosController.uploadExcel,
+  cobrosController.importarExcelDebitos
+);
+
+// Gestión de lotes
+router.get('/debitos/lotes', cobrosController.obtenerLotesImportados);
+router.get('/debitos/lotes/:idLote', cobrosController.obtenerDetalleLote);
+
+// Estado de aportes mensuales (nuevo módulo)
+router.get('/debitos/estado-actual', cobrosController.obtenerEstadoAportesMensualesActual);
+router.get('/debitos/historial', cobrosController.obtenerHistorialAportesMensuales);
+
 module.exports = router;

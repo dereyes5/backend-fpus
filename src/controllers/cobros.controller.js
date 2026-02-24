@@ -606,6 +606,192 @@ const obtenerTransaccionesSaldo = async (req, res) => {
   }
 };
 
+// ========================================
+// MÓDULO DE DÉBITOS MENSUALES
+// ========================================
+
+const debitosService = require('../services/debitos.service');
+const multer = require('multer');
+const path = require('path');
+
+// Configuración de multer para archivos Excel
+const storage = multer.memoryStorage(); // Guardar en memoria para procesamiento inmediato
+const upload = multer({
+  storage: storage,
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === '.xlsx' || ext === '.xls') {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten archivos Excel (.xlsx, .xls)'));
+    }
+  },
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB máximo
+  }
+});
+
+/**
+ * Middleware de multer para importación de Excel
+ */
+const uploadExcel = upload.single('archivo');
+
+/**
+ * Importar archivo Excel de débitos mensuales
+ */
+const importarExcelDebitos = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No se proporcionó ningún archivo'
+      });
+    }
+
+    const resultado = await debitosService.importarExcelDebitos(
+      req.file.buffer,
+      req.file.originalname,
+      req.userId // Viene del middleware de autenticación
+    );
+
+    res.json(resultado);
+  } catch (error) {
+    console.error('Error al importar Excel de débitos:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Error al importar archivo Excel'
+    });
+  }
+};
+
+/**
+ * Obtener lista de lotes importados
+ */
+const obtenerLotesImportados = async (req, res) => {
+  try {
+    const { mes, anio, limit, offset } = req.query;
+    
+    const filtros = {
+      mes: mes ? parseInt(mes) : null,
+      anio: anio ? parseInt(anio) : null,
+      limit: limit ? parseInt(limit) : 50,
+      offset: offset ? parseInt(offset) : 0
+    };
+
+    const lotes = await debitosService.obtenerLotesImportados(filtros);
+
+    res.json({
+      success: true,
+      data: lotes,
+      total: lotes.length
+    });
+  } catch (error) {
+    console.error('Error al obtener lotes:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener lista de lotes importados'
+    });
+  }
+};
+
+/**
+ * Obtener detalle de un lote específico
+ */
+const obtenerDetalleLote = async (req, res) => {
+  try {
+    const { idLote } = req.params;
+    
+    const detalle = await debitosService.obtenerDetalleLote(parseInt(idLote));
+
+    res.json({
+      success: true,
+      data: detalle
+    });
+  } catch (error) {
+    console.error('Error al obtener detalle del lote:', error);
+    res.status(404).json({
+      success: false,
+      error: error.message || 'Error al obtener detalle del lote'
+    });
+  }
+};
+
+/**
+ * Obtener estado de aportes mensuales (vista actual)
+ */
+const obtenerEstadoAportesMensualesActual = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(`
+      SELECT * FROM vista_estado_aportes_actual
+      ORDER BY es_titular DESC, nombre_completo
+    `);
+
+    res.json({
+      success: true,
+      data: result.rows,
+      total: result.rows.length,
+      mes: result.rows[0]?.mes,
+      anio: result.rows[0]?.anio
+    });
+  } catch (error) {
+    console.error('Error al obtener estado de aportes mensuales:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener estado de aportes mensuales'
+    });
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * Obtener historial completo de aportes mensuales
+ */
+const obtenerHistorialAportesMensuales = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { mes, anio, idBenefactor } = req.query;
+    
+    let query = 'SELECT * FROM vista_historial_aportes_completo WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+    
+    if (mes) {
+      params.push(parseInt(mes));
+      query += ` AND mes = $${paramIndex++}`;
+    }
+    
+    if (anio) {
+      params.push(parseInt(anio));
+      query += ` AND anio = $${paramIndex++}`;
+    }
+    
+    if (idBenefactor) {
+      params.push(parseInt(idBenefactor));
+      query += ` AND id_benefactor = $${paramIndex++}`;
+    }
+    
+    query += ' ORDER BY anio DESC, mes DESC, nombre_completo';
+    
+    const result = await client.query(query, params);
+
+    res.json({
+      success: true,
+      data: result.rows,
+      total: result.rows.length
+    });
+  } catch (error) {
+    console.error('Error al obtener historial de aportes:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener historial de aportes mensuales'
+    });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   obtenerListaBenefactores,
   obtenerEstadoAportesMesActual,
@@ -619,5 +805,12 @@ module.exports = {
   registrarCobros,
   obtenerSaldoBenefactor,
   obtenerCobros,
-  obtenerTransaccionesSaldo
+  obtenerTransaccionesSaldo,
+  // Nuevos endpoints de débitos mensuales
+  uploadExcel,
+  importarExcelDebitos,
+  obtenerLotesImportados,
+  obtenerDetalleLote,
+  obtenerEstadoAportesMensualesActual,
+  obtenerHistorialAportesMensuales
 };
