@@ -450,14 +450,14 @@ const obtenerSaldoBenefactor = async (req, res) => {
 const obtenerCobros = async (req, res) => {
   const client = await pool.connect();
   try {
-    const { 
-      id_benefactor, 
-      estado, 
-      fecha_desde, 
+    const {
+      id_benefactor,
+      estado,
+      fecha_desde,
       fecha_hasta,
       procesado,
-      page = 1, 
-      limit = 50 
+      page = 1,
+      limit = 50
     } = req.query;
 
     let query = 'SELECT c.*, b.nombre_completo, b.cedula FROM cobros c LEFT JOIN benefactores b ON c.id_benefactor = b.id_benefactor WHERE 1=1';
@@ -651,7 +651,7 @@ const importarExcelDebitos = async (req, res) => {
     const resultado = await debitosService.importarExcelDebitos(
       req.file.buffer,
       req.file.originalname,
-      req.userId // Viene del middleware de autenticación
+      req.usuario?.id_usuario // Viene del middleware de autenticación
     );
 
     res.json(resultado);
@@ -670,7 +670,7 @@ const importarExcelDebitos = async (req, res) => {
 const obtenerLotesImportados = async (req, res) => {
   try {
     const { mes, anio, limit, offset } = req.query;
-    
+
     const filtros = {
       mes: mes ? parseInt(mes) : null,
       anio: anio ? parseInt(anio) : null,
@@ -700,7 +700,7 @@ const obtenerLotesImportados = async (req, res) => {
 const obtenerDetalleLote = async (req, res) => {
   try {
     const { idLote } = req.params;
-    
+
     const detalle = await debitosService.obtenerDetalleLote(parseInt(idLote));
 
     res.json({
@@ -752,28 +752,28 @@ const obtenerHistorialAportesMensuales = async (req, res) => {
   const client = await pool.connect();
   try {
     const { mes, anio, idBenefactor } = req.query;
-    
+
     let query = 'SELECT * FROM vista_historial_aportes_completo WHERE 1=1';
     const params = [];
     let paramIndex = 1;
-    
+
     if (mes) {
       params.push(parseInt(mes));
       query += ` AND mes = $${paramIndex++}`;
     }
-    
+
     if (anio) {
       params.push(parseInt(anio));
       query += ` AND anio = $${paramIndex++}`;
     }
-    
+
     if (idBenefactor) {
       params.push(parseInt(idBenefactor));
       query += ` AND id_benefactor = $${paramIndex++}`;
     }
-    
+
     query += ' ORDER BY anio DESC, mes DESC, nombre_completo';
-    
+
     const result = await client.query(query, params);
 
     res.json({
