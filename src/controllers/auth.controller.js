@@ -194,7 +194,8 @@ const asignarPermisos = async (req, res) => {
       social_lectura,
       social_escritura,
       configuraciones,
-      aprobaciones,      aprobaciones_social,      aprobaciones_social,
+      aprobaciones,
+      aprobaciones_social,
     } = req.body;
 
     // Verificar que el usuario existe
