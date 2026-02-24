@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const notificacionesService = require('./services/notificaciones.service');
+const notificacionesService = require('../services/notificaciones.service');
 
 /**
  * Configuración de tareas programadas (CRON)
