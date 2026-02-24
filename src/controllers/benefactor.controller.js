@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const logger = require('../config/logger');
+const notificacionesService = require('../services/notificaciones.service');
 const path = require('path');
 const fs = require('fs');
 
@@ -275,6 +276,17 @@ const crearBenefactor = async (req, res) => {
     );
 
     await client.query('COMMIT');
+
+    console.log('[Benefactor] Benefactor creado:', result.rows[0].id_benefactor);
+    
+    // Notificar a usuarios con permisos de aprobación
+    try {
+      await notificacionesService.notificarCasosPendientes('benefactores');
+      console.log('[Benefactor] Notificaciones enviadas a aprobadores');
+    } catch (notifError) {
+      console.error('[Benefactor] Error al enviar notificaciones:', notifError);
+      // No fallar la creación si falla la notificación
+    }
 
     res.status(201).json({
       success: true,

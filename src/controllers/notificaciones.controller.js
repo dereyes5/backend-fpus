@@ -14,17 +14,24 @@ async function obtenerNotificaciones(req, res) {
     const idUsuario = req.usuario.id_usuario;
     const soloNoLeidas = req.query.no_leidas === 'true';
     
+    console.log('[Notificaciones] Obteniendo notificaciones:', { 
+      idUsuario, 
+      soloNoLeidas 
+    });
+    
     const notificaciones = await notificacionesService.obtenerNotificaciones(
       idUsuario,
       soloNoLeidas
     );
+    
+    console.log('[Notificaciones] Notificaciones encontradas:', notificaciones.length);
     
     res.json({
       total: notificaciones.length,
       notificaciones
     });
   } catch (error) {
-    console.error('Error al obtener notificaciones:', error);
+    console.error('[Notificaciones] Error al obtener notificaciones:', error);
     res.status(500).json({ 
       error: 'Error al obtener notificaciones',
       detalle: error.message 

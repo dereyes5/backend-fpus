@@ -1,4 +1,5 @@
 const socialService = require('../services/social.service');
+const notificacionesService = require('../services/notificaciones.service');
 const { validationResult } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
@@ -73,12 +74,23 @@ async function crearCaso(req, res) {
     const idUsuarioCarga = req.usuario.id_usuario;
     const beneficiario = await socialService.crearBeneficiarioSocial(req.body, idUsuarioCarga);
     
+    console.log('[Social] Caso social creado:', beneficiario.id_beneficiario_social);
+    
+    // Notificar a usuarios con permisos de aprobación
+    try {
+      await notificacionesService.notificarCasosPendientes('social');
+      console.log('[Social] Notificaciones enviadas a aprobadores');
+    } catch (notifError) {
+      console.error('[Social] Error al enviar notificaciones:', notifError);
+      // No fallar la creación si falla la notificación
+    }
+    
     res.status(201).json({
       mensaje: 'Caso social creado exitosamente',
       beneficiario
     });
   } catch (error) {
-    console.error('Error al crear caso social:', error);
+    console.error('[Social] Error al crear caso social:', error);
     res.status(500).json({ 
       error: 'Error al crear caso social',
       detalle: error.message 

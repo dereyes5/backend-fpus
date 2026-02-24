@@ -176,10 +176,20 @@ const aprobarRechazarRegistro = async (req, res) => {
       : `El benefactor ${benefactorData.nombre_completo} ha sido rechazado${comentario ? `. Motivo: ${comentario}` : '.'}`;
     const link = `/benefactores/${id_benefactor}`;
 
+    console.log('[Aprobaciones] Creando notificación:', {
+      usuario: benefactorData.id_usuario,
+      tipo: 'APROBACION_BENEFACTOR',
+      titulo,
+      mensaje,
+      link
+    });
+
     await client.query(
       `SELECT crear_notificacion($1, 'APROBACION_BENEFACTOR', $2, $3, $4)`,
       [benefactorData.id_usuario, titulo, mensaje, link]
     );
+
+    console.log('[Aprobaciones] Notificación creada exitosamente');
 
     await client.query('COMMIT');
 

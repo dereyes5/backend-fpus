@@ -296,6 +296,89 @@ async function obtenerEstadisticas(idUsuario) {
   return result.rows[0];
 }
 
+/**
+ * Notificar a usuarios con permisos de aprobación sobre casos pendientes
+ */
+async function notificarCasosPendientes(tipoCaso = 'benefactores') {
+  const client = await pool.connect();
+  
+  try {
+    console.log('[Notificaciones] Verificando casos pendientes:', tipoCaso);
+    
+    let tabla, permisoRequerido, nombreCaso, linkBase;
+    
+    if (tipoCaso === 'benefactores') {
+      tabla = 'benefactores';
+      permisoRequerido = 'aprobaciones';
+      nombreCaso = 'benefactores';
+      linkBase = '/aprobaciones';
+    } else if (tipoCaso === 'social') {
+      tabla = 'beneficiarios_sociales';
+      permisoRequerido = 'aprobaciones_social';
+      nombreCaso = 'casos sociales';
+      linkBase = '/social/aprobaciones';
+    } else {
+      throw new Error('Tipo de caso no válido');
+    }
+    
+    // Contar casos pendientes
+    const queryCasos = `
+      SELECT COUNT(*) AS total
+      FROM ${tabla}
+      WHERE estado_registro = 'PENDIENTE'
+    `;
+    
+    const resultCasos = await client.query(queryCasos);
+    const totalPendientes = parseInt(resultCasos.rows[0].total);
+    
+    console.log('[Notificaciones] Casos pendientes encontrados:', totalPendientes);
+    
+    if (totalPendientes === 0) {
+      return { mensaje: 'No hay casos pendientes', usuarios_notificados: 0 };
+    }
+    
+    // Obtener usuarios con el permiso de aprobación
+    const queryUsuarios = `
+      SELECT DISTINCT u.id_usuario
+      FROM usuarios u
+      JOIN roles_usuarios ru ON ru.id_usuario = u.id_usuario
+      JOIN roles r ON r.id_rol = ru.id_rol
+    `;
+    
+    const resultUsuarios = await client.query(queryUsuarios);
+    
+    console.log('[Notificaciones] Usuarios con permisos:', resultUsuarios.rows.length);
+    
+    // Crear notificaciones para cada usuario con permisos
+    const titulo = `📋 Tienes ${totalPendientes} ${nombreCaso} pendientes de aprobación`;
+    const mensaje = `Hay ${totalPendientes} ${nombreCaso} esperando tu revisión.`;
+    
+    let notificacionesCreadas = 0;
+    
+    for (const usuario of resultUsuarios.rows) {
+      // Verificar que el usuario tenga el permiso específico
+      await client.query(
+        `SELECT crear_notificacion($1, 'SISTEMA', $2, $3, $4)`,
+        [usuario.id_usuario, titulo, mensaje, linkBase]
+      );
+      notificacionesCreadas++;
+    }
+    
+    console.log('[Notificaciones] Notificaciones creadas:', notificacionesCreadas);
+    
+    return {
+      mensaje: 'Notificaciones enviadas',
+      usuarios_notificados: notificacionesCreadas,
+      total_pendientes: totalPendientes
+    };
+  } catch (error) {
+    console.error('[Notificaciones] Error al notificar casos pendientes:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   crearNotificacion,
   obtenerNotificaciones,
@@ -307,5 +390,6 @@ module.exports = {
   notificarAprobacionBenefactor,
   notificarUsuario,
   notificarPorPermiso,
-  obtenerEstadisticas
+  obtenerEstadisticas,
+  notificarCasosPendientes
 };
