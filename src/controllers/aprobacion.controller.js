@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const notificacionesService = require('../services/notificaciones.service');
 
 const obtenerAprobaciones = async (req, res) => {
   const client = await pool.connect();
@@ -122,7 +123,14 @@ const aprobarRechazarRegistro = async (req, res) => {
 
     // Verificar que el benefactor existe y está pendiente
     const benefactor = await client.query(
-      'SELECT estado_registro FROM benefactores WHERE id_benefactor = $1',
+      `SELECT 
+        b.estado_registro,
+        b.nombre_completo,
+        b.id_usuario,
+        u.nombre_usuario
+      FROM benefactores b
+      JOIN usuarios u ON u.id_usuario = b.id_usuario
+      WHERE b.id_benefactor = $1`,
       [id_benefactor]
     );
 
@@ -134,7 +142,9 @@ const aprobarRechazarRegistro = async (req, res) => {
       });
     }
 
-    if (benefactor.rows[0].estado_registro !== 'PENDIENTE') {
+    const benefactorData = benefactor.rows[0];
+
+    if (benefactorData.estado_registro !== 'PENDIENTE') {
       await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
@@ -154,6 +164,21 @@ const aprobarRechazarRegistro = async (req, res) => {
         id_benefactor, id_admin, estado_aprobacion, comentario
       ) VALUES ($1, $2, $3, $4) RETURNING *`,
       [id_benefactor, id_admin, estado_aprobacion, comentario]
+    );
+
+    // Crear notificación para el usuario que cargó el benefactor
+    const aprobado = estado_aprobacion === 'APROBADO';
+    const titulo = aprobado 
+      ? '✅ Benefactor aprobado' 
+      : '❌ Benefactor rechazado';
+    const mensaje = aprobado
+      ? `El benefactor ${benefactorData.nombre_completo} ha sido aprobado exitosamente.`
+      : `El benefactor ${benefactorData.nombre_completo} ha sido rechazado${comentario ? `. Motivo: ${comentario}` : '.'}`;
+    const link = `/benefactores/${id_benefactor}`;
+
+    await client.query(
+      `SELECT crear_notificacion($1, 'APROBACION_BENEFACTOR', $2, $3, $4)`,
+      [benefactorData.id_usuario, titulo, mensaje, link]
     );
 
     await client.query('COMMIT');

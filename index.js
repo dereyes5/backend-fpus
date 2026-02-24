@@ -5,6 +5,7 @@ require('dotenv').config();
 const routes = require('./src/routes');
 const logger = require('./src/config/logger');
 const requestLogger = require('./src/middleware/logger.middleware');
+const { inicializarTareasProgramadas } = require('./src/config/cron');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -78,4 +79,7 @@ app.listen(PORT, () => {
 ║   http://localhost:${PORT}                  ║
 ╚═══════════════════════════════════════════╝
   `);
+  
+  // Inicializar tareas programadas
+  inicializarTareasProgramadas();
 });

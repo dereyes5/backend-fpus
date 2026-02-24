@@ -15,8 +15,14 @@
     {
       "id": "social",
       "nombre": "Social",
-      "descripcion": "Módulo de trabajo social",
+      "descripcion": "Gestión de casos sociales y seguimiento",
       "permisos": ["lectura", "escritura"]
+    },
+    {
+      "id": "aprobaciones_social",
+      "nombre": "Aprobaciones Social",
+      "descripcion": "Aprobar/rechazar casos sociales",
+      "permisos": ["acceso"]
     },
     {
       "id": "configuraciones",
