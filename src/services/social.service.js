@@ -389,7 +389,6 @@ async function obtenerSeguimiento(idBeneficiarioSocial) {
       s.tiene_fotos,
       s.fecha_registro,
       u.nombre_usuario AS responsable,
-      u.email AS email_responsable,
       COALESCE(
         json_agg(
           json_build_object(
@@ -406,7 +405,7 @@ async function obtenerSeguimiento(idBeneficiarioSocial) {
     JOIN usuarios u ON u.id_usuario = s.id_usuario
     LEFT JOIN fotos_seguimiento f ON f.id_seguimiento = s.id_seguimiento
     WHERE s.id_beneficiario_social = $1
-    GROUP BY s.id_seguimiento, u.nombre_usuario, u.email
+    GROUP BY s.id_seguimiento, u.nombre_usuario
     ORDER BY s.fecha_evento DESC, s.fecha_registro DESC
   `;
   
