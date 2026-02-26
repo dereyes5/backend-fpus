@@ -107,8 +107,29 @@ const verificarPermiso = (recurso, tipoPermiso = 'lectura') => {
   return async (req, res, next) => {
     try {
       const { roles } = req.usuario;
+      const clavePermiso = tipoPermiso === 'acceso'
+        ? recurso
+        : `${recurso}_${tipoPermiso}`;
+
+      console.log('[PermisosMiddleware] Verificando permiso', {
+        userId: req.usuario?.id_usuario,
+        username: req.usuario?.nombre_usuario,
+        url: req.originalUrl,
+        method: req.method,
+        recurso,
+        tipoPermiso,
+        clavePermiso,
+        rolesCount: Array.isArray(roles) ? roles.length : 0,
+        roles: Array.isArray(roles) ? roles.map(r => ({ id_rol: r.id_rol, nombre_rol: r.nombre_rol || r.nombre })) : roles,
+        tokenPermisos: req.usuario?.permisos ? Object.keys(req.usuario.permisos).filter(k => req.usuario.permisos[k]) : null,
+      });
       
       if (!roles || roles.length === 0) {
+        console.warn('[PermisosMiddleware] Acceso denegado: usuario sin roles', {
+          userId: req.usuario?.id_usuario,
+          clavePermiso,
+          url: req.originalUrl,
+        });
         return res.status(403).json({
           success: false,
           message: 'No tienes permisos para acceder a este recurso',
@@ -126,20 +147,34 @@ const verificarPermiso = (recurso, tipoPermiso = 'lectura') => {
       // Verificar permisos del primer rol del usuario
       const idRol = roles[0].id_rol;
       const permisosRol = permisos.permisos_por_rol[idRol];
-
-      // Construir el nombre de la clave de permiso
-      // Ejemplo: 'social' + 'escritura' = 'social_escritura'
-      const clavePermiso = tipoPermiso === 'acceso' 
-        ? recurso 
-        : `${recurso}_${tipoPermiso}`;
+      console.log('[PermisosMiddleware] Permisos cargados para rol', {
+        userId: req.usuario?.id_usuario,
+        idRol,
+        rolEncontrado: !!permisosRol,
+        clavesDisponibles: permisosRol?.permisos ? Object.keys(permisosRol.permisos).filter(k => permisosRol.permisos[k]) : [],
+        claveRequerida: clavePermiso,
+        valorClaveRequerida: permisosRol?.permisos?.[clavePermiso],
+      });
 
       if (!permisosRol || !permisosRol.permisos[clavePermiso]) {
+        console.warn('[PermisosMiddleware] Acceso denegado: permiso faltante', {
+          userId: req.usuario?.id_usuario,
+          idRol,
+          clavePermiso,
+          url: req.originalUrl,
+        });
         return res.status(403).json({
           success: false,
           message: `No tienes permiso para ${tipoPermiso} en ${recurso}`,
         });
       }
 
+      console.log('[PermisosMiddleware] Acceso permitido', {
+        userId: req.usuario?.id_usuario,
+        idRol,
+        clavePermiso,
+        url: req.originalUrl,
+      });
       next();
     } catch (error) {
       console.error('Error al verificar permiso:', error);

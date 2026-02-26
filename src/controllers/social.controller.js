@@ -126,6 +126,14 @@ async function obtenerCasos(req, res) {
     if (usuarioSocialEscritura(req)) {
       filtros.id_usuario_carga = req.usuario.id_usuario;
     }
+
+    console.log('[Social] obtenerCasos', {
+      userId: req.usuario?.id_usuario,
+      username: req.usuario?.nombre_usuario,
+      tokenPermisos: req.usuario?.permisos ? Object.keys(req.usuario.permisos).filter(k => req.usuario.permisos[k]) : null,
+      scopeSoloPropios: usuarioSocialEscritura(req),
+      filtros,
+    });
     
     const beneficiarios = await socialService.obtenerBeneficiariosSociales(filtros);
     
