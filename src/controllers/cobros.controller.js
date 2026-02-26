@@ -49,16 +49,23 @@ const obtenerEstadoAportesMesActual = async (req, res) => {
       SELECT 
         e.*,
         b.n_convenio,
+        b.tipo_benefactor,
+        LOWER(COALESCE(b.tipo_afiliacion, '')) AS tipo_afiliacion,
         COALESCE(cobros_estado.debitados, 0) as cobros_debitados,
         COALESCE(cobros_estado.pendientes, 0) as cobros_pendientes,
         COALESCE(cobros_estado.errores, 0) as cobros_errores,
         CASE 
-          WHEN COALESCE(cobros_estado.debitados, 0) > 0 AND e.estado_aporte = 'APORTADO' THEN 'DEBITADO'
-          WHEN COALESCE(cobros_estado.pendientes, 0) > 0 OR COALESCE(cobros_estado.errores, 0) > 0 THEN 'PENDIENTE'
-          ELSE e.estado_aporte
+          WHEN b.tipo_benefactor = 'DEPENDIENTE'
+               AND LOWER(COALESCE(b.tipo_afiliacion, '')) = 'corporativo'
+               AND COALESCE(cobros_titular.debitados, 0) > 0
+               AND e.estado_aporte = 'APORTADO'
+            THEN 'APORTADO'
+          WHEN COALESCE(cobros_estado.debitados, 0) > 0 AND e.estado_aporte = 'APORTADO' THEN 'APORTADO'
+          ELSE 'NO_APORTADO'
         END as estado_cobro
       FROM estado_aportes_mes_actual e
       JOIN benefactores b ON e.id_benefactor = b.id_benefactor
+      LEFT JOIN relaciones_dependientes rd ON rd.id_dependiente = e.id_benefactor
       LEFT JOIN LATERAL (
         SELECT 
           COUNT(CASE WHEN c.estado = 'Proceso O.K.' THEN 1 END) as debitados,
@@ -69,6 +76,14 @@ const obtenerEstadoAportesMesActual = async (req, res) => {
           AND EXTRACT(MONTH FROM c.fecha_transmision) = EXTRACT(MONTH FROM CURRENT_DATE)
           AND EXTRACT(YEAR FROM c.fecha_transmision) = EXTRACT(YEAR FROM CURRENT_DATE)
       ) cobros_estado ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(CASE WHEN c.estado = 'Proceso O.K.' THEN 1 END) as debitados
+        FROM cobros c
+        WHERE c.id_benefactor = rd.id_titular
+          AND EXTRACT(MONTH FROM c.fecha_transmision) = EXTRACT(MONTH FROM CURRENT_DATE)
+          AND EXTRACT(YEAR FROM c.fecha_transmision) = EXTRACT(YEAR FROM CURRENT_DATE)
+      ) cobros_titular ON TRUE
       ORDER BY nombre_completo
     `);
 
@@ -164,10 +179,7 @@ const obtenerNoAportados = async (req, res) => {
         COALESCE(cobros_estado.debitados, 0) as cobros_debitados,
         COALESCE(cobros_estado.pendientes, 0) as cobros_pendientes,
         COALESCE(cobros_estado.errores, 0) as cobros_errores,
-        CASE 
-          WHEN COALESCE(cobros_estado.pendientes, 0) > 0 OR COALESCE(cobros_estado.errores, 0) > 0 THEN 'PENDIENTE'
-          ELSE 'NO_APORTADO'
-        END as estado_cobro
+        'NO_APORTADO' as estado_cobro
       FROM estado_aportes_mes_actual e
       JOIN benefactores b ON e.id_benefactor = b.id_benefactor
       LEFT JOIN LATERAL (
@@ -213,7 +225,7 @@ const obtenerAportados = async (req, res) => {
         COALESCE(cobros_estado.debitados, 0) as cobros_debitados,
         COALESCE(cobros_estado.pendientes, 0) as cobros_pendientes,
         COALESCE(cobros_estado.errores, 0) as cobros_errores,
-        'DEBITADO' as estado_cobro
+        'APORTADO' as estado_cobro
       FROM estado_aportes_mes_actual e
       JOIN benefactores b ON e.id_benefactor = b.id_benefactor
       LEFT JOIN LATERAL (
