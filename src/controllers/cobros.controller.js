@@ -735,71 +735,8 @@ const obtenerEstadoAportesMensualesActual = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT
-        v.id_benefactor,
-        v.nombre_completo,
-        v.cedula,
-        v.n_convenio,
-        COALESCE(b.aporte, v.share_inscripcion, 0) AS monto_esperado,
-        CASE
-          WHEN (
-            CASE
-              WHEN v.es_titular = FALSE
-                   AND LOWER(COALESCE(b.tipo_afiliacion, '')) = 'corporativo'
-                   AND COALESCE(cobros_titular.debitados, 0) > 0
-                THEN 'APORTADO'
-              WHEN COALESCE(cobros_propios.debitados, 0) > 0
-                THEN 'APORTADO'
-              ELSE 'NO_APORTADO'
-            END
-          ) = 'APORTADO'
-            THEN COALESCE(b.aporte, v.share_inscripcion, 0)
-          ELSE 0
-        END AS monto_aportado,
-        v.estado_aporte,
-        CASE
-          WHEN v.es_titular = FALSE
-               AND LOWER(COALESCE(b.tipo_afiliacion, '')) = 'corporativo'
-               AND COALESCE(cobros_titular.debitados, 0) > 0
-            THEN 'APORTADO'
-          WHEN COALESCE(cobros_propios.debitados, 0) > 0
-            THEN 'APORTADO'
-          ELSE 'NO_APORTADO'
-        END AS estado_cobro,
-        COALESCE(cobros_propios.ultima_fecha_aporte, cobros_titular.ultima_fecha_aporte) AS ultima_fecha_aporte,
-        COALESCE(cobros_propios.debitados, 0) AS cobros_debitados,
-        COALESCE(cobros_propios.pendientes, 0) AS cobros_pendientes,
-        COALESCE(cobros_propios.errores, 0) AS cobros_errores,
-        v.es_titular,
-        v.id_titular_relacionado,
-        v.nombre_titular,
-        v.mes,
-        v.anio
-      FROM vista_estado_aportes_actual v
-      JOIN benefactores b ON b.id_benefactor = v.id_benefactor
-      LEFT JOIN relaciones_dependientes rd ON rd.id_dependiente = v.id_benefactor
-      LEFT JOIN LATERAL (
-        SELECT
-          COUNT(CASE WHEN c.estado = 'Proceso O.K.' THEN 1 END) as debitados,
-          COUNT(CASE WHEN c.estado = 'PENDIENTE' THEN 1 END) as pendientes,
-          COUNT(CASE WHEN c.estado LIKE 'ERROR%' THEN 1 END) as errores,
-          MAX(c.fecha_transmision) as ultima_fecha_aporte
-        FROM cobros c
-        WHERE c.id_benefactor = v.id_benefactor
-          AND EXTRACT(MONTH FROM c.fecha_transmision) = EXTRACT(MONTH FROM CURRENT_DATE)
-          AND EXTRACT(YEAR FROM c.fecha_transmision) = EXTRACT(YEAR FROM CURRENT_DATE)
-      ) cobros_propios ON TRUE
-      LEFT JOIN LATERAL (
-        SELECT
-          COUNT(CASE WHEN c.estado = 'Proceso O.K.' THEN 1 END) as debitados,
-          MAX(c.fecha_transmision) as ultima_fecha_aporte
-        FROM cobros c
-        WHERE c.id_benefactor = rd.id_titular
-          AND EXTRACT(MONTH FROM c.fecha_transmision) = EXTRACT(MONTH FROM CURRENT_DATE)
-          AND EXTRACT(YEAR FROM c.fecha_transmision) = EXTRACT(YEAR FROM CURRENT_DATE)
-      ) cobros_titular ON TRUE
-      WHERE COALESCE(LOWER(b.estado), 'active') = 'active'
-      ORDER BY v.es_titular DESC, v.nombre_completo
+      SELECT * FROM vista_estado_aportes_actual
+      ORDER BY es_titular DESC, nombre_completo
     `);
 
     res.json({
