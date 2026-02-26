@@ -106,7 +106,7 @@ const verificarPermisoEditar = (recurso) => {
 const verificarPermiso = (recurso, tipoPermiso = 'lectura') => {
   return async (req, res, next) => {
     try {
-      const { roles } = req.usuario;
+      const { roles, permisos: permisosToken } = req.usuario;
       const clavePermiso = tipoPermiso === 'acceso'
         ? recurso
         : `${recurso}_${tipoPermiso}`;
@@ -124,8 +124,43 @@ const verificarPermiso = (recurso, tipoPermiso = 'lectura') => {
         tokenPermisos: req.usuario?.permisos ? Object.keys(req.usuario.permisos).filter(k => req.usuario.permisos[k]) : null,
       });
       
+      // Prioridad 1: permisos granulares embebidos en token (sistema actual)
+      if (permisosToken && typeof permisosToken === 'object') {
+        const tienePermisoToken = permisosToken[clavePermiso] === true;
+
+        console.log('[PermisosMiddleware] Validando con permisos del token', {
+          userId: req.usuario?.id_usuario,
+          clavePermiso,
+          valorEnToken: permisosToken[clavePermiso],
+        });
+
+        if (!tienePermisoToken) {
+          console.warn('[PermisosMiddleware] Acceso denegado: permiso faltante en token', {
+            userId: req.usuario?.id_usuario,
+            clavePermiso,
+            url: req.originalUrl,
+          });
+          return res.status(403).json({
+            success: false,
+            message: `No tienes permiso para ${tipoPermiso} en ${recurso}`,
+            debug: {
+              source: 'token',
+              missing_permission: clavePermiso,
+            }
+          });
+        }
+
+        console.log('[PermisosMiddleware] Acceso permitido por permisos del token', {
+          userId: req.usuario?.id_usuario,
+          clavePermiso,
+          url: req.originalUrl,
+        });
+        return next();
+      }
+
+      // Prioridad 2 (fallback legacy): resolver por roles + permisos.json
       if (!roles || roles.length === 0) {
-        console.warn('[PermisosMiddleware] Acceso denegado: usuario sin roles', {
+        console.warn('[PermisosMiddleware] Acceso denegado: usuario sin roles y sin permisos en token', {
           userId: req.usuario?.id_usuario,
           clavePermiso,
           url: req.originalUrl,
@@ -133,6 +168,11 @@ const verificarPermiso = (recurso, tipoPermiso = 'lectura') => {
         return res.status(403).json({
           success: false,
           message: 'No tienes permisos para acceder a este recurso',
+          debug: {
+            source: 'roles',
+            reason: 'missing_roles_and_token_permissions',
+            missing_permission: clavePermiso,
+          }
         });
       }
 
