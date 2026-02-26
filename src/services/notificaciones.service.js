@@ -311,12 +311,12 @@ async function notificarCasosPendientes(tipoCaso = 'benefactores') {
       tabla = 'benefactores';
       permisoRequerido = 'aprobaciones';
       nombreCaso = 'benefactores';
-      linkBase = '/aprobaciones';
+      linkBase = '/aprobaciones/benefactores';
     } else if (tipoCaso === 'social') {
       tabla = 'beneficiarios_sociales';
       permisoRequerido = 'aprobaciones_social';
       nombreCaso = 'casos sociales';
-      linkBase = '/social/aprobaciones';
+      linkBase = '/aprobaciones/social';
     } else {
       throw new Error('Tipo de caso no válido');
     }

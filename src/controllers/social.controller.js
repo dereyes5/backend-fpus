@@ -56,6 +56,8 @@ const uploadFotos = multer({
   fileFilter: fileFilter
 }).array('fotos', 10); // Máximo 10 fotos
 
+const usuarioSocialEscritura = (req) => !!req.usuario?.permisos?.social_escritura;
+
 // ==========================================
 // 1. BENEFICIARIOS SOCIALES
 // ==========================================
@@ -120,6 +122,10 @@ async function obtenerCasos(req, res) {
         delete filtros[key];
       }
     });
+
+    if (usuarioSocialEscritura(req)) {
+      filtros.id_usuario_carga = req.usuario.id_usuario;
+    }
     
     const beneficiarios = await socialService.obtenerBeneficiariosSociales(filtros);
     
@@ -143,6 +149,9 @@ async function obtenerCasos(req, res) {
 async function obtenerCasoPorId(req, res) {
   try {
     const { id } = req.params;
+    if (usuarioSocialEscritura(req)) {
+      await socialService.verificarPropietarioCasoSocial(id, req.usuario.id_usuario);
+    }
     const beneficiario = await socialService.obtenerBeneficiarioSocialPorId(id);
     
     res.json(beneficiario);
@@ -151,6 +160,9 @@ async function obtenerCasoPorId(req, res) {
     
     if (error.message === 'Beneficiario social no encontrado') {
       return res.status(404).json({ error: error.message });
+    }
+    if (error.message === 'No autorizado para acceder a este caso social') {
+      return res.status(403).json({ error: error.message });
     }
     
     res.status(500).json({ 
@@ -172,6 +184,7 @@ async function actualizarCaso(req, res) {
     }
     
     const { id } = req.params;
+    await socialService.verificarPropietarioCasoSocial(id, req.usuario.id_usuario);
     const beneficiario = await socialService.actualizarBeneficiarioSocial(id, req.body);
     
     res.json({
@@ -183,6 +196,9 @@ async function actualizarCaso(req, res) {
     
     if (error.message === 'Beneficiario social no encontrado') {
       return res.status(404).json({ error: error.message });
+    }
+    if (error.message === 'No autorizado para acceder a este caso social') {
+      return res.status(403).json({ error: error.message });
     }
     
     res.status(500).json({ 
@@ -205,6 +221,7 @@ async function cambiarEstado(req, res) {
       return res.status(400).json({ error: 'El estado es requerido' });
     }
     
+    await socialService.verificarPropietarioCasoSocial(id, req.usuario.id_usuario);
     const beneficiario = await socialService.cambiarEstadoCaso(id, estado, observaciones);
     
     res.json({
@@ -216,6 +233,9 @@ async function cambiarEstado(req, res) {
     
     if (error.message === 'Beneficiario social no encontrado') {
       return res.status(404).json({ error: error.message });
+    }
+    if (error.message === 'No autorizado para acceder a este caso social') {
+      return res.status(403).json({ error: error.message });
     }
     
     if (error.message === 'Estado no válido') {
@@ -257,6 +277,8 @@ async function agregarSeguimiento(req, res) {
       
       const { id_beneficiario_social, tipo_evento, descripcion, fecha_evento } = req.body;
       const idUsuario = req.usuario.id_usuario;
+
+      await socialService.verificarPropietarioCasoSocial(id_beneficiario_social, idUsuario);
       
       // Procesar fotos
       const fotos = [];
@@ -301,6 +323,12 @@ async function agregarSeguimiento(req, res) {
       }
       
       console.error('Error al agregar seguimiento:', error);
+      if (error.message === 'Beneficiario social no encontrado') {
+        return res.status(404).json({ error: error.message });
+      }
+      if (error.message === 'No autorizado para acceder a este caso social') {
+        return res.status(403).json({ error: error.message });
+      }
       res.status(500).json({ 
         error: 'Error al agregar seguimiento',
         detalle: error.message 
@@ -316,6 +344,9 @@ async function agregarSeguimiento(req, res) {
 async function obtenerSeguimiento(req, res) {
   try {
     const { idBeneficiario } = req.params;
+    if (usuarioSocialEscritura(req)) {
+      await socialService.verificarPropietarioCasoSocial(idBeneficiario, req.usuario.id_usuario);
+    }
     const seguimientos = await socialService.obtenerSeguimiento(idBeneficiario);
     
     res.json({
@@ -324,6 +355,12 @@ async function obtenerSeguimiento(req, res) {
     });
   } catch (error) {
     console.error('Error al obtener seguimiento:', error);
+    if (error.message === 'Beneficiario social no encontrado') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message === 'No autorizado para acceder a este caso social') {
+      return res.status(403).json({ error: error.message });
+    }
     res.status(500).json({ 
       error: 'Error al obtener seguimiento',
       detalle: error.message 
@@ -338,6 +375,7 @@ async function obtenerSeguimiento(req, res) {
 async function eliminarSeguimiento(req, res) {
   try {
     const { id } = req.params;
+    await socialService.verificarPropietarioSeguimientoSocial(id, req.usuario.id_usuario);
     
     // Primero obtener las fotos para eliminarlas del disco
     const queryFotos = `
@@ -366,6 +404,9 @@ async function eliminarSeguimiento(req, res) {
     if (error.message === 'Seguimiento no encontrado') {
       return res.status(404).json({ error: error.message });
     }
+    if (error.message === 'No autorizado para acceder a este seguimiento') {
+      return res.status(403).json({ error: error.message });
+    }
     
     res.status(500).json({ 
       error: 'Error al eliminar seguimiento',
@@ -387,7 +428,9 @@ async function obtenerEstadisticas(req, res) {
     const filtros = {};
     
     // Si el usuario no es admin, solo ver sus propias estadísticas
-    if (req.query.id_usuario_carga) {
+    if (usuarioSocialEscritura(req)) {
+      filtros.id_usuario_carga = req.usuario.id_usuario;
+    } else if (req.query.id_usuario_carga) {
       filtros.id_usuario_carga = req.query.id_usuario_carga;
     }
     

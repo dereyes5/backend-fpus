@@ -19,15 +19,14 @@ async function crearBeneficiarioSocial(data, idUsuarioCarga) {
     
     const query = `
       INSERT INTO beneficiarios_sociales (
-        id_benefactor, nombre_completo, cedula, telefono, email,
+        nombre_completo, cedula, telefono, email,
         direccion, ciudad, provincia, tipo_caso, prioridad, estado,
         descripcion_caso, id_usuario_carga, fecha_inicio, observaciones
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *
     `;
     
     const values = [
-      data.id_benefactor || null,
       data.nombre_completo,
       data.cedula || null,
       data.telefono || null,
@@ -140,6 +139,54 @@ async function obtenerBeneficiarioSocialPorId(id) {
   }
   
   return result.rows[0];
+}
+
+/**
+ * Verificar que un caso social pertenezca al usuario indicado
+ */
+async function verificarPropietarioCasoSocial(idBeneficiarioSocial, idUsuario) {
+  const query = `
+    SELECT id_beneficiario_social, id_usuario_carga
+    FROM beneficiarios_sociales
+    WHERE id_beneficiario_social = $1
+  `;
+
+  const result = await pool.query(query, [idBeneficiarioSocial]);
+
+  if (result.rows.length === 0) {
+    throw new Error('Beneficiario social no encontrado');
+  }
+
+  if (Number(result.rows[0].id_usuario_carga) !== Number(idUsuario)) {
+    throw new Error('No autorizado para acceder a este caso social');
+  }
+
+  return true;
+}
+
+/**
+ * Verificar que un seguimiento pertenezca a un caso del usuario indicado
+ */
+async function verificarPropietarioSeguimientoSocial(idSeguimiento, idUsuario) {
+  const query = `
+    SELECT s.id_seguimiento, bs.id_usuario_carga
+    FROM seguimiento_social s
+    JOIN beneficiarios_sociales bs
+      ON bs.id_beneficiario_social = s.id_beneficiario_social
+    WHERE s.id_seguimiento = $1
+  `;
+
+  const result = await pool.query(query, [idSeguimiento]);
+
+  if (result.rows.length === 0) {
+    throw new Error('Seguimiento no encontrado');
+  }
+
+  if (Number(result.rows[0].id_usuario_carga) !== Number(idUsuario)) {
+    throw new Error('No autorizado para acceder a este seguimiento');
+  }
+
+  return true;
 }
 
 /**
@@ -581,6 +628,8 @@ module.exports = {
   crearBeneficiarioSocial,
   obtenerBeneficiariosSociales,
   obtenerBeneficiarioSocialPorId,
+  verificarPropietarioCasoSocial,
+  verificarPropietarioSeguimientoSocial,
   actualizarBeneficiarioSocial,
   cambiarEstadoCaso,
   agregarSeguimiento,
