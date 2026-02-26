@@ -267,9 +267,24 @@ async function cambiarEstado(req, res) {
  */
 async function agregarSeguimiento(req, res) {
   uploadFotos(req, res, async function (err) {
+    console.log('[Social][Seguimiento] POST /seguimiento - inicio', {
+      userId: req.usuario?.id_usuario,
+      username: req.usuario?.nombre_usuario,
+      bodyKeys: req.body ? Object.keys(req.body) : [],
+      filesCount: Array.isArray(req.files) ? req.files.length : 0,
+    });
+
     if (err instanceof multer.MulterError) {
+      console.warn('[Social][Seguimiento] Error Multer', {
+        userId: req.usuario?.id_usuario,
+        error: err.message,
+      });
       return res.status(400).json({ error: 'Error al subir archivos: ' + err.message });
     } else if (err) {
+      console.warn('[Social][Seguimiento] Error upload', {
+        userId: req.usuario?.id_usuario,
+        error: err.message,
+      });
       return res.status(400).json({ error: err.message });
     }
     
@@ -285,6 +300,14 @@ async function agregarSeguimiento(req, res) {
       
       const { id_beneficiario_social, tipo_evento, descripcion, fecha_evento } = req.body;
       const idUsuario = req.usuario.id_usuario;
+
+      console.log('[Social][Seguimiento] Payload validado', {
+        userId: idUsuario,
+        id_beneficiario_social,
+        tipo_evento,
+        fecha_evento: fecha_evento || null,
+        descripcionLength: typeof descripcion === 'string' ? descripcion.length : 0,
+      });
 
       await socialService.verificarPropietarioCasoSocial(id_beneficiario_social, idUsuario);
       
@@ -315,6 +338,13 @@ async function agregarSeguimiento(req, res) {
         fotos,
         idUsuario
       );
+
+      console.log('[Social][Seguimiento] Seguimiento creado', {
+        userId: idUsuario,
+        id_beneficiario_social,
+        id_seguimiento: seguimiento?.id_seguimiento,
+        fotosCount: Array.isArray(seguimiento?.fotos) ? seguimiento.fotos.length : 0,
+      });
       
       res.status(201).json({
         mensaje: 'Seguimiento agregado exitosamente',
@@ -330,7 +360,13 @@ async function agregarSeguimiento(req, res) {
         });
       }
       
-      console.error('Error al agregar seguimiento:', error);
+      console.error('[Social][Seguimiento] Error al agregar seguimiento:', {
+        userId: req.usuario?.id_usuario,
+        body: req.body,
+        filesCount: Array.isArray(req.files) ? req.files.length : 0,
+        message: error.message,
+        stack: error.stack
+      });
       if (error.message === 'Beneficiario social no encontrado') {
         return res.status(404).json({ error: error.message });
       }
@@ -352,17 +388,37 @@ async function agregarSeguimiento(req, res) {
 async function obtenerSeguimiento(req, res) {
   try {
     const { idBeneficiario } = req.params;
+    console.log('[Social][Seguimiento] GET /seguimiento/:idBeneficiario - inicio', {
+      userId: req.usuario?.id_usuario,
+      username: req.usuario?.nombre_usuario,
+      idBeneficiario,
+      scopeSoloPropios: usuarioSocialEscritura(req),
+      query: req.query || {},
+    });
+
     if (usuarioSocialEscritura(req)) {
       await socialService.verificarPropietarioCasoSocial(idBeneficiario, req.usuario.id_usuario);
     }
     const seguimientos = await socialService.obtenerSeguimiento(idBeneficiario);
+
+    console.log('[Social][Seguimiento] GET resultado', {
+      userId: req.usuario?.id_usuario,
+      idBeneficiario,
+      total: Array.isArray(seguimientos) ? seguimientos.length : null,
+      firstId: Array.isArray(seguimientos) && seguimientos[0] ? seguimientos[0].id_seguimiento : null,
+    });
     
     res.json({
       total: seguimientos.length,
       seguimientos
     });
   } catch (error) {
-    console.error('Error al obtener seguimiento:', error);
+    console.error('[Social][Seguimiento] Error al obtener seguimiento:', {
+      userId: req.usuario?.id_usuario,
+      idBeneficiario: req.params?.idBeneficiario,
+      message: error.message,
+      stack: error.stack
+    });
     if (error.message === 'Beneficiario social no encontrado') {
       return res.status(404).json({ error: error.message });
     }

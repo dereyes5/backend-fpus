@@ -293,6 +293,15 @@ async function agregarSeguimiento(idBeneficiarioSocial, data, fotos, idUsuario) 
   const client = await pool.connect();
   
   try {
+    console.log('[SocialService][Seguimiento] agregarSeguimiento - inicio', {
+      idBeneficiarioSocial,
+      idUsuario,
+      tipo_evento: data?.tipo_evento,
+      fecha_evento: data?.fecha_evento || null,
+      descripcionLength: typeof data?.descripcion === 'string' ? data.descripcion.length : 0,
+      fotosCount: Array.isArray(fotos) ? fotos.length : 0
+    });
+
     await client.query('BEGIN');
     
     // Insertar seguimiento
@@ -341,10 +350,22 @@ async function agregarSeguimiento(idBeneficiarioSocial, data, fotos, idUsuario) 
     }
     
     await client.query('COMMIT');
+
+    console.log('[SocialService][Seguimiento] agregarSeguimiento - commit', {
+      id_seguimiento: seguimiento?.id_seguimiento,
+      idBeneficiarioSocial,
+      fotosCount: Array.isArray(seguimiento?.fotos) ? seguimiento.fotos.length : 0
+    });
     
     return seguimiento;
   } catch (error) {
     await client.query('ROLLBACK');
+    console.error('[SocialService][Seguimiento] agregarSeguimiento - rollback', {
+      idBeneficiarioSocial,
+      idUsuario,
+      message: error.message,
+      stack: error.stack
+    });
     throw error;
   } finally {
     client.release();
@@ -355,6 +376,10 @@ async function agregarSeguimiento(idBeneficiarioSocial, data, fotos, idUsuario) 
  * Obtener seguimiento de un caso (bitácora completa)
  */
 async function obtenerSeguimiento(idBeneficiarioSocial) {
+  console.log('[SocialService][Seguimiento] obtenerSeguimiento - query', {
+    idBeneficiarioSocial
+  });
+
   const query = `
     SELECT 
       s.id_seguimiento,
@@ -386,6 +411,11 @@ async function obtenerSeguimiento(idBeneficiarioSocial) {
   `;
   
   const result = await pool.query(query, [idBeneficiarioSocial]);
+  console.log('[SocialService][Seguimiento] obtenerSeguimiento - resultado', {
+    idBeneficiarioSocial,
+    total: result.rows.length,
+    ids: result.rows.slice(0, 5).map((row) => row.id_seguimiento)
+  });
   return result.rows;
 }
 
