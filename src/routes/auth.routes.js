@@ -58,6 +58,7 @@ router.post('/usuarios', createUsuarioDto, validarResultado, authController.crea
 router.get('/usuarios', verificarToken, authController.listarUsuarios);
 router.put('/usuarios/:id_usuario/permisos', verificarToken, authController.asignarPermisos);
 router.get('/perfil', verificarToken, authController.obtenerPerfil);
+router.put('/perfil/cargo', verificarToken, authController.actualizarCargoPerfil);
 router.put('/cambiar-password', verificarToken, cambiarPasswordDto, validarResultado, authController.cambiarPassword);
 
 // Rutas de foto de perfil

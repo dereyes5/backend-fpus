@@ -89,6 +89,7 @@ const login = async (req, res) => {
       {
         id_usuario: usuario.id_usuario,
         nombre_usuario: usuario.nombre_usuario,
+        cargo: usuario.cargo || 'AGENTE',
         permisos,
       },
       process.env.JWT_SECRET,
@@ -110,6 +111,7 @@ const login = async (req, res) => {
         usuario: {
           id_usuario: usuario.id_usuario,
           nombre_usuario: usuario.nombre_usuario,
+          cargo: usuario.cargo || 'AGENTE',
           permisos,
         },
       },
@@ -158,7 +160,7 @@ const crearUsuario = async (req, res) => {
 
     // Crear usuario
     const result = await client.query(
-      'INSERT INTO usuarios (nombre_usuario, password_hash) VALUES ($1, $2) RETURNING id_usuario, nombre_usuario',
+      'INSERT INTO usuarios (nombre_usuario, password_hash) VALUES ($1, $2) RETURNING id_usuario, nombre_usuario, cargo',
       [nombre_usuario, passwordHash]
     );
 
@@ -168,6 +170,7 @@ const crearUsuario = async (req, res) => {
       data: {
         id_usuario: result.rows[0].id_usuario,
         nombre_usuario: result.rows[0].nombre_usuario,
+        cargo: result.rows[0].cargo || 'AGENTE',
       },
     });
   } catch (error) {
@@ -274,7 +277,7 @@ const obtenerPerfil = async (req, res) => {
 
     // Obtener información del usuario
     const userResult = await client.query(
-      'SELECT id_usuario, nombre_usuario FROM usuarios WHERE id_usuario = $1',
+      'SELECT id_usuario, nombre_usuario, cargo FROM usuarios WHERE id_usuario = $1',
       [id_usuario]
     );
 
@@ -321,6 +324,7 @@ const obtenerPerfil = async (req, res) => {
       data: {
         id_usuario: userResult.rows[0].id_usuario,
         nombre_usuario: userResult.rows[0].nombre_usuario,
+        cargo: userResult.rows[0].cargo || 'AGENTE',
         permisos,
       },
     });
@@ -400,6 +404,7 @@ const listarUsuarios = async (req, res) => {
       `SELECT 
         u.id_usuario,
         u.nombre_usuario,
+        u.cargo,
         u.id_sucursal,
         s.iniciales as sucursal_iniciales,
         s.nombre as sucursal_nombre,
@@ -442,6 +447,51 @@ const listarUsuarios = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error al listar usuarios',
+      error: error.message,
+    });
+  } finally {
+    client.release();
+  }
+};
+
+const actualizarCargoPerfil = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id_usuario } = req.usuario;
+    const cargo = (req.body?.cargo || '').toString().trim().toUpperCase();
+
+    if (!cargo) {
+      return res.status(400).json({
+        success: false,
+        message: 'El cargo es obligatorio',
+      });
+    }
+
+    const result = await client.query(
+      `UPDATE usuarios
+       SET cargo = $1
+       WHERE id_usuario = $2
+       RETURNING id_usuario, nombre_usuario, cargo`,
+      [cargo, id_usuario]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Usuario no encontrado',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cargo actualizado exitosamente',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Error al actualizar cargo del perfil:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al actualizar cargo del perfil',
       error: error.message,
     });
   } finally {
@@ -592,6 +642,7 @@ module.exports = {
   crearUsuario,
   asignarPermisos,
   obtenerPerfil,
+  actualizarCargoPerfil,
   cambiarPassword,
   listarUsuarios,
   subirFotoPerfil,
