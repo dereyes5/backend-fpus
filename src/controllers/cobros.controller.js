@@ -1,5 +1,9 @@
 const pool = require('../config/database');
 
+const logCartera = (evento, payload = {}) => {
+  console.log(`[Cartera] ${evento}`, payload);
+};
+
 /**
  * Obtener lista de benefactores titulares con su monto esperado
  */
@@ -735,8 +739,34 @@ const obtenerEstadoAportesMensualesActual = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT * FROM vista_estado_aportes_actual
-      ORDER BY es_titular DESC, nombre_completo
+      SELECT
+        v.id_benefactor,
+        v.nombre_completo,
+        v.cedula,
+        v.n_convenio,
+        COALESCE(b.aporte, v.share_inscripcion, 0) AS monto_esperado,
+        CASE
+          WHEN v.estado_aporte = 'APORTADO' THEN COALESCE(b.aporte, v.share_inscripcion, 0)
+          ELSE 0
+        END AS monto_aportado,
+        v.estado_aporte,
+        CASE
+          WHEN v.estado_aporte = 'APORTADO' THEN 'APORTADO'
+          ELSE 'NO_APORTADO'
+        END AS estado_cobro,
+        NULL::integer AS cobros_debitados,
+        NULL::integer AS cobros_pendientes,
+        NULL::integer AS cobros_errores,
+        NULL::date AS ultima_fecha_aporte,
+        v.es_titular,
+        v.id_titular_relacionado,
+        v.nombre_titular,
+        v.mes,
+        v.anio
+      FROM vista_estado_aportes_actual v
+      JOIN benefactores b ON b.id_benefactor = v.id_benefactor
+      WHERE COALESCE(LOWER(b.estado), 'active') = 'active'
+      ORDER BY v.es_titular DESC, v.nombre_completo
     `);
 
     res.json({
@@ -826,3 +856,67 @@ module.exports = {
   obtenerEstadoAportesMensualesActual,
   obtenerHistorialAportesMensuales
 };
+
+const wrapCarteraHandler = (nombre, handler) => {
+  return async (req, res, next) => {
+    const inicio = Date.now();
+    const contexto = {
+      userId: req.usuario?.id_usuario || null,
+      method: req.method,
+      url: req.originalUrl || req.url,
+      params: req.params || {},
+      query: req.query || {}
+    };
+
+    logCartera(`${nombre}:inicio`, contexto);
+
+    res.on('finish', () => {
+      logCartera(`${nombre}:fin`, {
+        ...contexto,
+        statusCode: res.statusCode,
+        durationMs: Date.now() - inicio
+      });
+    });
+
+    try {
+      return await handler(req, res, next);
+    } catch (error) {
+      logCartera(`${nombre}:error_no_controlado`, {
+        ...contexto,
+        message: error.message,
+        stack: error.stack
+      });
+      if (typeof next === 'function') {
+        return next(error);
+      }
+      throw error;
+    }
+  };
+};
+
+const carteraHandlersConLog = [
+  'obtenerListaBenefactores',
+  'obtenerEstadoAportesMesActual',
+  'obtenerEstadoAportesPorFecha',
+  'obtenerEstadoAportesPorMes',
+  'obtenerNoAportados',
+  'obtenerAportados',
+  'obtenerEstadisticas',
+  'obtenerHistorialCompleto',
+  'obtenerHistorialBenefactor',
+  'registrarCobros',
+  'obtenerSaldoBenefactor',
+  'obtenerCobros',
+  'obtenerTransaccionesSaldo',
+  'importarExcelDebitos',
+  'obtenerLotesImportados',
+  'obtenerDetalleLote',
+  'obtenerEstadoAportesMensualesActual',
+  'obtenerHistorialAportesMensuales'
+];
+
+carteraHandlersConLog.forEach((handlerName) => {
+  if (typeof module.exports[handlerName] === 'function') {
+    module.exports[handlerName] = wrapCarteraHandler(handlerName, module.exports[handlerName]);
+  }
+});

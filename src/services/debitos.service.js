@@ -605,6 +605,9 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
  */
 const obtenerLotesImportados = async (filtros = {}) => {
   const { mes, anio, limit = 50, offset = 0 } = filtros;
+  console.log('[DebitosService] obtenerLotesImportados - inicio', {
+    filtros: { mes, anio, limit, offset }
+  });
 
   let query = `
     SELECT 
@@ -647,6 +650,9 @@ const obtenerLotesImportados = async (filtros = {}) => {
   params.push(limit, offset);
 
   const result = await pool.query(query, params);
+  console.log('[DebitosService] obtenerLotesImportados - resultado', {
+    total: result.rows.length
+  });
   return result.rows;
 };
 
@@ -657,6 +663,7 @@ const obtenerLotesImportados = async (filtros = {}) => {
  */
 const obtenerDetalleLote = async (idLote) => {
   const client = await pool.connect();
+  console.log('[DebitosService] obtenerDetalleLote - inicio', { idLote });
 
   try {
     // Información del lote
@@ -716,8 +723,15 @@ const obtenerDetalleLote = async (idLote) => {
       cobros: cobrosResult.rows,
       estados: estadosResult.rows
     };
-
+  } catch (error) {
+    console.log('[DebitosService] obtenerDetalleLote - error', {
+      idLote,
+      message: error.message,
+      stack: error.stack
+    });
+    throw error;
   } finally {
+    console.log('[DebitosService] obtenerDetalleLote - fin', { idLote });
     client.release();
   }
 };
