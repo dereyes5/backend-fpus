@@ -740,33 +740,35 @@ const obtenerEstadoAportesMensualesActual = async (req, res) => {
   try {
     const result = await client.query(`
       SELECT
-        v.id_benefactor,
-        v.nombre_completo,
-        v.cedula,
-        v.n_convenio,
+        b.id_benefactor,
+        b.nombre_completo,
+        b.cedula,
+        b.n_convenio,
         COALESCE(b.aporte, v.share_inscripcion, 0) AS monto_esperado,
         CASE
-          WHEN v.estado_aporte = 'APORTADO' THEN COALESCE(b.aporte, v.share_inscripcion, 0)
+          WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'APORTADO' THEN COALESCE(b.aporte, v.share_inscripcion, 0)
           ELSE 0
         END AS monto_aportado,
-        v.estado_aporte,
+        COALESCE(v.estado_aporte, 'NO_APORTADO') AS estado_aporte,
         CASE
-          WHEN v.estado_aporte = 'APORTADO' THEN 'APORTADO'
+          WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'APORTADO' THEN 'APORTADO'
           ELSE 'NO_APORTADO'
         END AS estado_cobro,
         NULL::integer AS cobros_debitados,
         NULL::integer AS cobros_pendientes,
         NULL::integer AS cobros_errores,
         NULL::date AS ultima_fecha_aporte,
-        v.es_titular,
+        COALESCE(v.es_titular, b.tipo_benefactor = 'TITULAR') AS es_titular,
         v.id_titular_relacionado,
         v.nombre_titular,
-        v.mes,
-        v.anio
-      FROM vista_estado_aportes_actual v
-      JOIN benefactores b ON b.id_benefactor = v.id_benefactor
-      WHERE COALESCE(LOWER(b.estado), 'active') IN ('active', 'activo')
-      ORDER BY v.es_titular DESC, v.nombre_completo
+        COALESCE(v.mes, EXTRACT(MONTH FROM CURRENT_DATE)::integer) AS mes,
+        COALESCE(v.anio, EXTRACT(YEAR FROM CURRENT_DATE)::integer) AS anio
+      FROM benefactores b
+      LEFT JOIN vista_estado_aportes_actual v
+        ON v.id_benefactor = b.id_benefactor
+      WHERE b.estado_registro = 'APROBADO'
+        AND COALESCE(LOWER(b.estado), 'active') IN ('active', 'activo')
+      ORDER BY (b.tipo_benefactor = 'TITULAR') DESC, b.nombre_completo
     `);
 
     res.json({
