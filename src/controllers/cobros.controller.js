@@ -271,15 +271,37 @@ const obtenerEstadisticas = async (req, res) => {
     const result = await client.query(`
       SELECT 
         COUNT(*) AS total_titulares,
-        COUNT(CASE WHEN estado_aporte = 'APORTADO' THEN 1 END) AS aportados,
-        COUNT(CASE WHEN estado_aporte = 'NO_APORTADO' THEN 1 END) AS no_aportados,
-        COALESCE(SUM(monto_esperado), 0) AS total_esperado,
-        COALESCE(SUM(monto_aportado), 0) AS total_recaudado,
+        COUNT(*) AS total_benefactores,
+        COUNT(CASE WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'APORTADO' THEN 1 END) AS aportados,
+        COUNT(CASE WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'NO_APORTADO' THEN 1 END) AS no_aportados,
+        COALESCE(SUM(COALESCE(b.aporte, v.share_inscripcion, 0)), 0) AS total_esperado,
+        COALESCE(SUM(
+          CASE
+            WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'APORTADO'
+              THEN COALESCE(b.aporte, v.share_inscripcion, 0)
+            ELSE 0
+          END
+        ), 0) AS total_recaudado,
         ROUND(
-          (COALESCE(SUM(monto_aportado), 0) / NULLIF(COALESCE(SUM(monto_esperado), 0), 0) * 100), 
+          (
+            COALESCE(SUM(
+              CASE
+                WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'APORTADO'
+                  THEN COALESCE(b.aporte, v.share_inscripcion, 0)
+                ELSE 0
+              END
+            ), 0)
+            /
+            NULLIF(COALESCE(SUM(COALESCE(b.aporte, v.share_inscripcion, 0)), 0), 0)
+            * 100
+          ),
           2
         ) AS porcentaje_recaudacion
-      FROM estado_aportes_mes_actual
+      FROM benefactores b
+      LEFT JOIN vista_estado_aportes_actual v
+        ON v.id_benefactor = b.id_benefactor
+      WHERE b.estado_registro = 'APROBADO'
+        AND COALESCE(LOWER(b.estado), 'active') IN ('active', 'activo')
     `);
 
     res.json({
@@ -757,7 +779,7 @@ const obtenerEstadoAportesMensualesActual = async (req, res) => {
         NULL::integer AS cobros_debitados,
         NULL::integer AS cobros_pendientes,
         NULL::integer AS cobros_errores,
-        NULL::date AS ultima_fecha_aporte,
+        cobros_ultimos.ultima_fecha_aporte,
         COALESCE(v.es_titular, b.tipo_benefactor = 'TITULAR') AS es_titular,
         v.id_titular_relacionado,
         v.nombre_titular,
@@ -766,6 +788,14 @@ const obtenerEstadoAportesMensualesActual = async (req, res) => {
       FROM benefactores b
       LEFT JOIN vista_estado_aportes_actual v
         ON v.id_benefactor = b.id_benefactor
+      LEFT JOIN LATERAL (
+        SELECT MAX(COALESCE(c.fecha_pago, c.fecha_transmision::date)) AS ultima_fecha_aporte
+        FROM cobros c
+        WHERE c.id_benefactor = b.id_benefactor
+          AND EXTRACT(MONTH FROM c.fecha_transmision) = EXTRACT(MONTH FROM CURRENT_DATE)
+          AND EXTRACT(YEAR FROM c.fecha_transmision) = EXTRACT(YEAR FROM CURRENT_DATE)
+          AND c.estado = 'Proceso O.K.'
+      ) cobros_ultimos ON TRUE
       WHERE b.estado_registro = 'APROBADO'
         AND COALESCE(LOWER(b.estado), 'active') IN ('active', 'activo')
       ORDER BY (b.tipo_benefactor = 'TITULAR') DESC, b.nombre_completo
