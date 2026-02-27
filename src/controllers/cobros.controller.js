@@ -765,7 +765,7 @@ const obtenerEstadoAportesMensualesActual = async (req, res) => {
         v.anio
       FROM vista_estado_aportes_actual v
       JOIN benefactores b ON b.id_benefactor = v.id_benefactor
-      WHERE COALESCE(LOWER(b.estado), 'active') = 'active'
+      WHERE COALESCE(LOWER(b.estado), 'active') IN ('active', 'activo')
       ORDER BY v.es_titular DESC, v.nombre_completo
     `);
 
