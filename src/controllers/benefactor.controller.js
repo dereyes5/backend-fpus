@@ -187,6 +187,7 @@ const crearBenefactor = async (req, res) => {
     const {
       tipo_benefactor,
       tipo_afiliacion,
+      corporacion,
       cuenta,
       n_convenio,
       mes_prod,
@@ -211,6 +212,16 @@ const crearBenefactor = async (req, res) => {
     } = req.body;
 
     const id_usuario = req.usuario.id_usuario;
+    const tipoAfiliacionNormalizado = String(tipo_afiliacion || '').toLowerCase();
+    const corporacionNormalizada = corporacion?.trim() || null;
+
+    if (tipoAfiliacionNormalizado === 'corporativo' && !corporacionNormalizada) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        message: 'La corporación es obligatoria para afiliación corporativa',
+      });
+    }
 
     // Verificar si la cédula ya existe
     if (cedula) {
@@ -257,17 +268,22 @@ const crearBenefactor = async (req, res) => {
 
     const result = await client.query(
       `INSERT INTO benefactores (
-        tipo_benefactor, tipo_afiliacion, cuenta, n_convenio, mes_prod,
+        tipo_benefactor, tipo_afiliacion, corporacion, cuenta, n_convenio, mes_prod,
         fecha_suscripcion, nombre_completo, cedula, nacionalidad, estado_civil,
         fecha_nacimiento, direccion, ciudad, provincia, telefono, email,
         num_cuenta_tc, tipo_cuenta, banco_emisor, inscripcion, aporte,
         observacion, estado, id_usuario, estado_registro, num_contrato
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-        $16, $17, $18, $19, $20, $21, $22, $23, $24, 'PENDIENTE', $25
+        $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, 'PENDIENTE', $26
       ) RETURNING *`,
       [
-        tipo_benefactor, tipo_afiliacion, cuenta, n_convenio, mes_prod,
+        tipo_benefactor,
+        tipo_afiliacion,
+        tipoAfiliacionNormalizado === 'corporativo' ? corporacionNormalizada : null,
+        cuenta,
+        n_convenio,
+        mes_prod,
         fecha_suscripcion, nombre_completo, cedula, nacionalidad, estado_civil,
         fecha_nacimiento, direccion, ciudad, provincia, telefono, email,
         num_cuenta_tc, tipo_cuenta, banco_emisor, inscripcion, aporte,
@@ -337,7 +353,7 @@ const actualizarBenefactor = async (req, res) => {
       'fecha_suscripcion', 'nombre_completo', 'cedula', 'nacionalidad', 'estado_civil',
       'fecha_nacimiento', 'direccion', 'ciudad', 'provincia', 'telefono', 'email',
       'num_cuenta_tc', 'tipo_cuenta', 'banco_emisor', 'inscripcion', 'aporte',
-      'observacion', 'estado',
+      'observacion', 'estado', 'corporacion',
     ];
 
     for (const campo of camposPermitidos) {
@@ -348,12 +364,64 @@ const actualizarBenefactor = async (req, res) => {
       }
     }
 
+    if (String(req.body.tipo_afiliacion || '').toLowerCase() === 'individual' && req.body.corporacion === undefined) {
+      campos.push(`corporacion = $${paramCount}`);
+      valores.push(null);
+      paramCount++;
+    }
+
     if (campos.length === 0) {
       await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
         message: 'No hay campos para actualizar',
       });
+    }
+
+    const tipoAfiliacionBody = req.body.tipo_afiliacion !== undefined
+      ? String(req.body.tipo_afiliacion || '').toLowerCase()
+      : null;
+    const corporacionBody = req.body.corporacion !== undefined
+      ? (req.body.corporacion?.trim() || null)
+      : undefined;
+
+    if (tipoAfiliacionBody === 'corporativo') {
+      if (corporacionBody !== undefined && !corporacionBody) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: 'La corporación es obligatoria para afiliación corporativa',
+        });
+      }
+
+      if (corporacionBody === undefined) {
+        const corporacionActual = await client.query(
+          'SELECT corporacion FROM benefactores WHERE id_benefactor = $1',
+          [id]
+        );
+        const valorActual = corporacionActual.rows[0]?.corporacion?.trim();
+        if (!valorActual) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            success: false,
+            message: 'La corporación es obligatoria para afiliación corporativa',
+          });
+        }
+      }
+    }
+
+    if (req.body.tipo_afiliacion === undefined && req.body.corporacion !== undefined) {
+      const afiliacionActual = await client.query(
+        'SELECT LOWER(COALESCE(tipo_afiliacion, \'\')) AS tipo_afiliacion FROM benefactores WHERE id_benefactor = $1',
+        [id]
+      );
+      if (afiliacionActual.rows[0]?.tipo_afiliacion === 'corporativo' && !corporacionBody) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: 'La corporación es obligatoria para afiliación corporativa',
+        });
+      }
     }
 
     // Verificar cédula única si se está actualizando

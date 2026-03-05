@@ -270,15 +270,15 @@ const obtenerEstadisticas = async (req, res) => {
   try {
     const result = await client.query(`
       SELECT 
-        COUNT(*) AS total_titulares,
+        COUNT(CASE WHEN b.tipo_benefactor = 'TITULAR' THEN 1 END) AS total_titulares,
         COUNT(*) AS total_benefactores,
         COUNT(CASE WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'APORTADO' THEN 1 END) AS aportados,
         COUNT(CASE WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'NO_APORTADO' THEN 1 END) AS no_aportados,
-        COALESCE(SUM(COALESCE(b.aporte, v.share_inscripcion, 0)), 0) AS total_esperado,
+        COALESCE(SUM(COALESCE(b.aporte, 0)), 0) AS total_esperado,
         COALESCE(SUM(
           CASE
             WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'APORTADO'
-              THEN COALESCE(b.aporte, v.share_inscripcion, 0)
+              THEN COALESCE(b.aporte, 0)
             ELSE 0
           END
         ), 0) AS total_recaudado,
@@ -287,12 +287,12 @@ const obtenerEstadisticas = async (req, res) => {
             COALESCE(SUM(
               CASE
                 WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'APORTADO'
-                  THEN COALESCE(b.aporte, v.share_inscripcion, 0)
+                  THEN COALESCE(b.aporte, 0)
                 ELSE 0
               END
             ), 0)
             /
-            NULLIF(COALESCE(SUM(COALESCE(b.aporte, v.share_inscripcion, 0)), 0), 0)
+            NULLIF(COALESCE(SUM(COALESCE(b.aporte, 0)), 0), 0)
             * 100
           ),
           2
@@ -766,9 +766,10 @@ const obtenerEstadoAportesMensualesActual = async (req, res) => {
         b.nombre_completo,
         b.cedula,
         b.n_convenio,
-        COALESCE(b.aporte, v.share_inscripcion, 0) AS monto_esperado,
+        b.corporacion,
+        COALESCE(b.aporte, 0) AS monto_esperado,
         CASE
-          WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'APORTADO' THEN COALESCE(b.aporte, v.share_inscripcion, 0)
+          WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'APORTADO' THEN COALESCE(b.aporte, 0)
           ELSE 0
         END AS monto_aportado,
         COALESCE(v.estado_aporte, 'NO_APORTADO') AS estado_aporte,
@@ -788,10 +789,15 @@ const obtenerEstadoAportesMensualesActual = async (req, res) => {
       FROM benefactores b
       LEFT JOIN vista_estado_aportes_actual v
         ON v.id_benefactor = b.id_benefactor
+      LEFT JOIN relaciones_dependientes rd
+        ON rd.id_dependiente = b.id_benefactor
       LEFT JOIN LATERAL (
         SELECT MAX(COALESCE(c.fecha_pago, c.fecha_transmision::date)) AS ultima_fecha_aporte
         FROM cobros c
-        WHERE c.id_benefactor = b.id_benefactor
+        WHERE c.id_benefactor = CASE
+          WHEN b.tipo_benefactor = 'TITULAR' THEN b.id_benefactor
+          ELSE rd.id_titular
+        END
           AND EXTRACT(MONTH FROM c.fecha_transmision) = EXTRACT(MONTH FROM CURRENT_DATE)
           AND EXTRACT(YEAR FROM c.fecha_transmision) = EXTRACT(YEAR FROM CURRENT_DATE)
           AND c.estado = 'Proceso O.K.'

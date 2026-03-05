@@ -395,7 +395,7 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
         );
         console.log('[Import] Test parametrizado:', testParam.rows);
 
-        // Buscar benefactor por cod_tercero (titular o dependiente individual)
+        // Buscar benefactor por cod_tercero (debe ser TITULAR para carga consolidada)
         const benefactorResult = await client.query(
           `SELECT id_benefactor, nombre_completo, tipo_benefactor, LOWER(COALESCE(tipo_afiliacion, '')) AS tipo_afiliacion
            FROM benefactores 
@@ -421,15 +421,19 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
 
         const benefactor = benefactorResult.rows[0];
 
-        if (
-          benefactor.tipo_benefactor === 'DEPENDIENTE' &&
-          benefactor.tipo_afiliacion !== 'individual'
-        ) {
+        if (benefactor.tipo_benefactor === 'DEPENDIENTE') {
           await client.query('RELEASE SAVEPOINT sp_fila');
           errores.push({
             fila: dato.fila_excel,
             cod_tercero: dato.cod_tercero,
-            error: 'Dependiente corporativo debe cobrarse en el titular (valor consolidado)'
+            error: 'Excel debe cargarse por titular (convenio de dependiente no permitido)'
+          });
+          console.log('[Import] Fila rechazada por convenio de dependiente:', {
+            fila: dato.fila_excel,
+            cod_tercero: dato.cod_tercero,
+            id_benefactor: benefactor.id_benefactor,
+            tipo_benefactor: benefactor.tipo_benefactor,
+            tipo_afiliacion: benefactor.tipo_afiliacion
           });
           insertadosFallidos++;
           continue;
@@ -496,73 +500,15 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
     console.log('[Import] PASO 7 OK:', JSON.stringify(procesamientoResult.rows[0]));
 
     const procesamiento = procesamientoResult.rows[0];
-
-    // 7.1 Complemento: registrar estados para dependientes INDIVIDUAL (no los procesa la función SQL actual)
-    console.log(`[Import] PASO 7.1: Procesando dependientes INDIVIDUAL del lote ${idLote}...`);
-    const individualesResult = await client.query(
-      `
-      WITH cobros_individuales AS (
-        SELECT
-          c.id_benefactor,
-          c.id_lote_importacion,
-          c.estado_banco_raw,
-          CASE
-            WHEN UPPER(TRIM(COALESCE(c.estado_banco_raw, ''))) LIKE '%O.K.%'
-              OR UPPER(TRIM(COALESCE(c.estado_banco_raw, ''))) LIKE '%OK%'
-              OR UPPER(TRIM(COALESCE(c.estado_banco_raw, ''))) IN ('PROCESO O.K.', 'EXITOSO', 'APROBADO', 'PROCESADO')
-            THEN 'APORTADO'
-            ELSE 'NO_APORTADO'
-          END AS estado_normalizado
-        FROM cobros c
-        JOIN benefactores b ON b.id_benefactor = c.id_benefactor
-        WHERE c.id_lote_importacion = $1
-          AND b.tipo_benefactor = 'DEPENDIENTE'
-          AND LOWER(COALESCE(b.tipo_afiliacion, '')) = 'individual'
-      ),
-      upserted AS (
-        INSERT INTO estado_aportes_mensuales (
-          id_benefactor,
-          mes,
-          anio,
-          estado_aporte,
-          share_inscripcion,
-          es_titular,
-          id_titular_relacionado,
-          id_lote_origen,
-          observaciones
-        )
-        SELECT
-          ci.id_benefactor,
-          $2,
-          $3,
-          ci.estado_normalizado,
-          COALESCE(b.aporte, 0),
-          FALSE,
-          rd.id_titular,
-          ci.id_lote_importacion,
-          'Estado de dependiente individual registrado desde debito bancario'
-        FROM cobros_individuales ci
-        JOIN benefactores b ON b.id_benefactor = ci.id_benefactor
-        LEFT JOIN relaciones_dependientes rd ON rd.id_dependiente = ci.id_benefactor
-        ON CONFLICT (id_benefactor, mes, anio)
-        DO UPDATE SET
-          estado_aporte = EXCLUDED.estado_aporte,
-          share_inscripcion = EXCLUDED.share_inscripcion,
-          id_titular_relacionado = EXCLUDED.id_titular_relacionado,
-          id_lote_origen = EXCLUDED.id_lote_origen,
-          fecha_registro = NOW(),
-          observaciones = 'Actualizado: ' || EXCLUDED.observaciones
-        RETURNING id_benefactor
-      )
-      SELECT COUNT(*)::int AS total_individuales_actualizados FROM upserted
-      `,
-      [idLote, mes, anio]
-    );
-
-    const individualesActualizados = individualesResult.rows[0]?.total_individuales_actualizados || 0;
-    procesamiento.dependientes_actualizados =
-      Number(procesamiento.dependientes_actualizados || 0) + Number(individualesActualizados || 0);
-    console.log(`[Import] PASO 7.1 OK: dependientes_individual_actualizados=${individualesActualizados}`);
+    console.log('[Import] Resumen procesamiento lote:', {
+      idLote,
+      totalProcesados: procesamiento.total_procesados,
+      titularesAportados: procesamiento.titulares_aportados,
+      titularesNoAportados: procesamiento.titulares_no_aportados,
+      dependientesActualizados: procesamiento.dependientes_actualizados,
+      erroresProceso: procesamiento.errores,
+      erroresFilas: errores.length
+    });
 
     console.log('[Import] PASO 8: Haciendo COMMIT...');
     await client.query('COMMIT');
