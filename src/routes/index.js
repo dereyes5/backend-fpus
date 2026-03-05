@@ -12,6 +12,7 @@ const sucursalRoutes = require('./sucursal.routes');
 const bancoRoutes = require('./banco.routes');
 const socialRoutes = require('./social.routes');
 const notificacionesRoutes = require('./notificaciones.routes');
+const aparienciaRoutes = require('./apariencia.routes');
 
 // Usar rutas
 router.use('/auth', authRoutes);
@@ -24,5 +25,6 @@ router.use('/sucursales', sucursalRoutes);
 router.use('/bancos', bancoRoutes);
 router.use('/social', socialRoutes);
 router.use('/notificaciones', notificacionesRoutes);
+router.use('/apariencia', aparienciaRoutes);
 
 module.exports = router;
