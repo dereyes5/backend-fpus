@@ -6,16 +6,24 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
+const normalizeCargo = (cargo) => {
+  const raw = (cargo || '').toString().trim().toUpperCase();
+  return raw || 'AGENTE';
+};
+
 const login = async (req, res) => {
   const client = await pool.connect();
   try {
-    const { nombre_usuario, password } = req.body;
+    const { nombre_usuario, password, cargo } = req.body;
+    const cargoNormalizado = normalizeCargo(cargo);
 
     logger.info('Login attempt', { username: nombre_usuario, ip: req.ip });
 
     // Buscar usuario
     const userResult = await client.query(
-      'SELECT * FROM usuarios WHERE nombre_usuario = $1',
+      `SELECT id_usuario, nombre_usuario, password_hash, cargo, activo
+       FROM usuarios
+       WHERE nombre_usuario = $1`,
       [nombre_usuario]
     );
 
@@ -28,6 +36,17 @@ const login = async (req, res) => {
     }
 
     const usuario = userResult.rows[0];
+
+    if (usuario.activo === false) {
+      logger.warn('Login blocked - inactive user', {
+        username: nombre_usuario,
+        userId: usuario.id_usuario,
+      });
+      return res.status(403).json({
+        success: false,
+        message: 'Usuario inactivo. Contacta al administrador.',
+      });
+    }
 
     // Verificar contraseña
     const passwordValida = await bcrypt.compare(password, usuario.password_hash);
@@ -90,6 +109,7 @@ const login = async (req, res) => {
         id_usuario: usuario.id_usuario,
         nombre_usuario: usuario.nombre_usuario,
         cargo: usuario.cargo || 'AGENTE',
+        activo: usuario.activo !== false,
         permisos,
       },
       process.env.JWT_SECRET,
@@ -112,6 +132,7 @@ const login = async (req, res) => {
           id_usuario: usuario.id_usuario,
           nombre_usuario: usuario.nombre_usuario,
           cargo: usuario.cargo || 'AGENTE',
+          activo: usuario.activo !== false,
           permisos,
         },
       },
@@ -160,8 +181,10 @@ const crearUsuario = async (req, res) => {
 
     // Crear usuario
     const result = await client.query(
-      'INSERT INTO usuarios (nombre_usuario, password_hash) VALUES ($1, $2) RETURNING id_usuario, nombre_usuario, cargo',
-      [nombre_usuario, passwordHash]
+      `INSERT INTO usuarios (nombre_usuario, password_hash, cargo, activo)
+       VALUES ($1, $2, $3, TRUE)
+       RETURNING id_usuario, nombre_usuario, cargo, activo`,
+      [nombre_usuario, passwordHash, cargoNormalizado]
     );
 
     res.status(201).json({
@@ -171,6 +194,7 @@ const crearUsuario = async (req, res) => {
         id_usuario: result.rows[0].id_usuario,
         nombre_usuario: result.rows[0].nombre_usuario,
         cargo: result.rows[0].cargo || 'AGENTE',
+        activo: result.rows[0].activo !== false,
       },
     });
   } catch (error) {
@@ -277,7 +301,7 @@ const obtenerPerfil = async (req, res) => {
 
     // Obtener información del usuario
     const userResult = await client.query(
-      'SELECT id_usuario, nombre_usuario, cargo FROM usuarios WHERE id_usuario = $1',
+      'SELECT id_usuario, nombre_usuario, cargo, activo FROM usuarios WHERE id_usuario = $1',
       [id_usuario]
     );
 
@@ -325,6 +349,7 @@ const obtenerPerfil = async (req, res) => {
         id_usuario: userResult.rows[0].id_usuario,
         nombre_usuario: userResult.rows[0].nombre_usuario,
         cargo: userResult.rows[0].cargo || 'AGENTE',
+        activo: userResult.rows[0].activo !== false,
         permisos,
       },
     });
@@ -399,12 +424,16 @@ const cambiarPassword = async (req, res) => {
 const listarUsuarios = async (req, res) => {
   const client = await pool.connect();
   try {
+    const incluirInactivos = req.query.incluir_inactivos === 'true';
     // Obtener usuarios con sus permisos
     const result = await client.query(
       `SELECT 
         u.id_usuario,
         u.nombre_usuario,
         u.cargo,
+        u.activo,
+        u.fecha_inactivacion,
+        u.id_usuario_inactiva,
         u.id_sucursal,
         s.iniciales as sucursal_iniciales,
         s.nombre as sucursal_nombre,
@@ -435,7 +464,9 @@ const listarUsuarios = async (req, res) => {
       FROM usuarios u
       LEFT JOIN permisos_usuario p ON u.id_usuario = p.id_usuario
       LEFT JOIN sucursales s ON u.id_sucursal = s.id_sucursal
-      ORDER BY u.id_usuario`
+      WHERE ($1::boolean = true OR COALESCE(u.activo, true) = true)
+      ORDER BY u.id_usuario`,
+      [incluirInactivos]
     );
 
     res.json({
@@ -455,48 +486,159 @@ const listarUsuarios = async (req, res) => {
 };
 
 const actualizarCargoPerfil = async (req, res) => {
+  return res.status(403).json({
+    success: false,
+    message: 'El cargo solo puede ser actualizado por un administrador',
+  });
+};
+
+const actualizarUsuarioAdmin = async (req, res) => {
   const client = await pool.connect();
   try {
-    const { id_usuario } = req.usuario;
-    const cargo = (req.body?.cargo || '').toString().trim().toUpperCase();
+    const idUsuarioObjetivo = Number(req.params.id_usuario);
+    const nombreUsuario = (req.body?.nombre_usuario || '').toString().trim();
+    const cargo = normalizeCargo(req.body?.cargo);
 
-    if (!cargo) {
-      return res.status(400).json({
-        success: false,
-        message: 'El cargo es obligatorio',
-      });
+    if (!idUsuarioObjetivo || Number.isNaN(idUsuarioObjetivo)) {
+      return res.status(400).json({ success: false, message: 'ID de usuario invalido' });
+    }
+    if (!nombreUsuario) {
+      return res.status(400).json({ success: false, message: 'El nombre de usuario es obligatorio' });
+    }
+
+    const conflict = await client.query(
+      `SELECT id_usuario
+       FROM usuarios
+       WHERE nombre_usuario = $1 AND id_usuario <> $2`,
+      [nombreUsuario, idUsuarioObjetivo]
+    );
+    if (conflict.rows.length > 0) {
+      return res.status(400).json({ success: false, message: 'El nombre de usuario ya existe' });
     }
 
     const result = await client.query(
       `UPDATE usuarios
-       SET cargo = $1
-       WHERE id_usuario = $2
-       RETURNING id_usuario, nombre_usuario, cargo`,
-      [cargo, id_usuario]
+       SET nombre_usuario = $1,
+           cargo = $2
+       WHERE id_usuario = $3
+       RETURNING id_usuario, nombre_usuario, cargo, activo, fecha_inactivacion`,
+      [nombreUsuario, cargo, idUsuarioObjetivo]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Usuario no encontrado',
-      });
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
     }
 
-    return res.status(200).json({
+    return res.json({
       success: true,
-      message: 'Cargo actualizado exitosamente',
+      message: 'Usuario actualizado exitosamente',
       data: result.rows[0],
     });
   } catch (error) {
-    console.error('Error al actualizar cargo del perfil:', error);
+    console.error('Error al actualizar usuario (admin):', error);
     return res.status(500).json({
       success: false,
-      message: 'Error al actualizar cargo del perfil',
+      message: 'Error al actualizar usuario',
       error: error.message,
     });
   } finally {
     client.release();
   }
+};
+
+const cambiarPasswordUsuarioAdmin = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const idUsuarioObjetivo = Number(req.params.id_usuario);
+    const passwordNueva = (req.body?.password_nueva || '').toString();
+
+    if (!idUsuarioObjetivo || Number.isNaN(idUsuarioObjetivo)) {
+      return res.status(400).json({ success: false, message: 'ID de usuario invalido' });
+    }
+    if (passwordNueva.length < 6) {
+      return res.status(400).json({ success: false, message: 'La contrasena nueva debe tener al menos 6 caracteres' });
+    }
+
+    const passwordHash = await bcrypt.hash(passwordNueva, 10);
+    const result = await client.query(
+      `UPDATE usuarios
+       SET password_hash = $1
+       WHERE id_usuario = $2
+       RETURNING id_usuario`,
+      [passwordHash, idUsuarioObjetivo]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Contrasena restablecida exitosamente',
+    });
+  } catch (error) {
+    console.error('Error al restablecer contrasena (admin):', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al restablecer contrasena',
+      error: error.message,
+    });
+  } finally {
+    client.release();
+  }
+};
+
+const cambiarEstadoUsuario = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const idUsuarioObjetivo = Number(req.params.id_usuario);
+    const idUsuarioAdmin = req.usuario?.id_usuario;
+    const activo = req.body?.activo === true;
+
+    if (!idUsuarioObjetivo || Number.isNaN(idUsuarioObjetivo)) {
+      return res.status(400).json({ success: false, message: 'ID de usuario invalido' });
+    }
+    if (!activo && idUsuarioObjetivo === idUsuarioAdmin) {
+      return res.status(400).json({
+        success: false,
+        message: 'No puedes inactivar tu propio usuario',
+      });
+    }
+
+    const result = await client.query(
+      `UPDATE usuarios
+       SET activo = $1,
+           fecha_inactivacion = CASE WHEN $1 = false THEN NOW() ELSE NULL END,
+           id_usuario_inactiva = CASE WHEN $1 = false THEN $2 ELSE NULL END
+       WHERE id_usuario = $3
+       RETURNING id_usuario, nombre_usuario, cargo, activo, fecha_inactivacion, id_usuario_inactiva`,
+      [activo, idUsuarioAdmin, idUsuarioObjetivo]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+    }
+
+    return res.json({
+      success: true,
+      message: activo ? 'Usuario activado exitosamente' : 'Usuario inactivado exitosamente',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Error al cambiar estado de usuario:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al cambiar estado del usuario',
+      error: error.message,
+    });
+  } finally {
+    client.release();
+  }
+};
+
+const eliminarUsuarioSoft = async (req, res) => {
+  req.body.activo = false;
+  return cambiarEstadoUsuario(req, res);
 };
 
 /**
@@ -645,6 +787,10 @@ module.exports = {
   actualizarCargoPerfil,
   cambiarPassword,
   listarUsuarios,
+  actualizarUsuarioAdmin,
+  cambiarPasswordUsuarioAdmin,
+  cambiarEstadoUsuario,
+  eliminarUsuarioSoft,
   subirFotoPerfil,
   obtenerFotoPerfil,
   eliminarFotoPerfil,
