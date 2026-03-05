@@ -3,11 +3,21 @@ const path = require('path');
 
 const APARIENCIA_DIR = path.join(__dirname, '../../uploads/apariencia');
 const CONFIG_PATH = path.join(APARIENCIA_DIR, 'config.json');
-const MAX_CAROUSEL_IMAGES = 5;
+
+const LEGACY_ASSETS = {
+  logo: path.join(__dirname, '../../../frontend/assets/img/FUNDACASDION.png'),
+  carousel: [
+    path.join(__dirname, '../../../frontend/assets/img/1 - copia.jpg'),
+    path.join(__dirname, '../../../frontend/assets/img/2.jpg'),
+    path.join(__dirname, '../../../frontend/assets/img/3.jpg'),
+    path.join(__dirname, '../../../frontend/assets/img/5.jpg'),
+    path.join(__dirname, '../../../frontend/assets/img/6.jpg'),
+  ],
+};
 
 const defaultConfig = () => ({
   logo: null,
-  carousel: Array.from({ length: MAX_CAROUSEL_IMAGES }, () => null),
+  carousel: [],
   updated_at: new Date().toISOString(),
 });
 
@@ -17,35 +27,30 @@ const ensureStorage = () => {
   }
 };
 
-const normalizeConfig = (raw) => {
-  const base = defaultConfig();
-  if (!raw || typeof raw !== 'object') {
-    return base;
-  }
+const sanitizeFilename = (filename) => filename.replace(/[^\w.-]/g, '_');
 
-  const carousel = Array.isArray(raw.carousel) ? raw.carousel : [];
-  return {
-    logo: typeof raw.logo === 'string' ? raw.logo : null,
-    carousel: Array.from({ length: MAX_CAROUSEL_IMAGES }, (_, index) => {
-      const value = carousel[index];
-      return typeof value === 'string' ? value : null;
-    }),
-    updated_at: typeof raw.updated_at === 'string' ? raw.updated_at : base.updated_at,
-  };
+const copyLegacyAsset = (sourcePath, prefix) => {
+  if (!fs.existsSync(sourcePath)) return null;
+  const ext = path.extname(sourcePath).toLowerCase() || '.jpg';
+  const filename = `${prefix}_${Date.now()}_${Math.floor(Math.random() * 10000)}${sanitizeFilename(ext)}`;
+  const targetPath = path.join(APARIENCIA_DIR, filename);
+  fs.copyFileSync(sourcePath, targetPath);
+  return filename;
 };
 
-const readConfig = () => {
-  ensureStorage();
-  if (!fs.existsSync(CONFIG_PATH)) {
-    return defaultConfig();
-  }
+const isNonEmptyString = (value) => typeof value === 'string' && value.trim().length > 0;
 
-  try {
-    const file = fs.readFileSync(CONFIG_PATH, 'utf8');
-    return normalizeConfig(JSON.parse(file));
-  } catch (error) {
-    return defaultConfig();
-  }
+const normalizeConfig = (raw) => {
+  const base = defaultConfig();
+  const carouselRaw = Array.isArray(raw?.carousel) ? raw.carousel : [];
+
+  const normalized = {
+    logo: isNonEmptyString(raw?.logo) ? raw.logo : null,
+    carousel: carouselRaw.filter(isNonEmptyString),
+    updated_at: isNonEmptyString(raw?.updated_at) ? raw.updated_at : base.updated_at,
+  };
+
+  return normalized;
 };
 
 const saveConfig = (config) => {
@@ -58,11 +63,44 @@ const saveConfig = (config) => {
   return normalized;
 };
 
-const removeImageIfExists = (filename) => {
-  if (!filename || typeof filename !== 'string') {
-    return;
+const buildLegacyInitialConfig = () => {
+  ensureStorage();
+  const logo = copyLegacyAsset(LEGACY_ASSETS.logo, 'logo_legacy');
+  const carousel = LEGACY_ASSETS.carousel
+    .map((assetPath, index) => copyLegacyAsset(assetPath, `carousel_legacy_${index}`))
+    .filter(Boolean);
+
+  return saveConfig({
+    logo: logo || null,
+    carousel,
+  });
+};
+
+const readConfig = () => {
+  ensureStorage();
+
+  if (!fs.existsSync(CONFIG_PATH)) {
+    return buildLegacyInitialConfig();
   }
 
+  try {
+    const file = fs.readFileSync(CONFIG_PATH, 'utf8');
+    const parsed = JSON.parse(file);
+    const normalized = normalizeConfig(parsed);
+
+    // Migracion para configuraciones antiguas vacias o formato anterior fijo
+    if (!normalized.logo && normalized.carousel.length === 0) {
+      return buildLegacyInitialConfig();
+    }
+
+    return normalized;
+  } catch (error) {
+    return buildLegacyInitialConfig();
+  }
+};
+
+const removeImageIfExists = (filename) => {
+  if (!isNonEmptyString(filename)) return;
   const filePath = path.join(APARIENCIA_DIR, filename);
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
@@ -87,9 +125,17 @@ const buildResponseData = (req, config) => {
       url: buildFileUrl(req, config.logo),
     },
     carousel: carouselItems,
-    carousel_urls: carouselItems.filter((item) => item.url).map((item) => item.url),
+    carousel_urls: carouselItems.map((item) => item.url).filter(Boolean),
     updated_at: config.updated_at,
   };
+};
+
+const parseIndex = (indexRaw) => {
+  const index = Number(indexRaw);
+  if (!Number.isInteger(index) || index < 0) {
+    return null;
+  }
+  return index;
 };
 
 const getConfiguracionPublica = (req, res) => {
@@ -144,14 +190,13 @@ const subirLogo = (req, res) => {
 
 const subirImagenCarrusel = (req, res) => {
   try {
-    const index = Number(req.params.index);
-    if (!Number.isInteger(index) || index < 0 || index >= MAX_CAROUSEL_IMAGES) {
+    const index = parseIndex(req.params.index);
+    if (index === null) {
       return res.status(400).json({
         success: false,
-        message: `Indice invalido. Debe estar entre 0 y ${MAX_CAROUSEL_IMAGES - 1}`,
+        message: 'Indice invalido',
       });
     }
-
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -160,6 +205,13 @@ const subirImagenCarrusel = (req, res) => {
     }
 
     const config = readConfig();
+    if (index >= config.carousel.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Indice fuera de rango. Usa el endpoint de agregar para nuevas imagenes',
+      });
+    }
+
     const oldFile = config.carousel[index];
     const carousel = [...config.carousel];
     carousel[index] = req.file.filename;
@@ -181,6 +233,36 @@ const subirImagenCarrusel = (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Error al actualizar imagen del carrusel',
+      error: error.message,
+    });
+  }
+};
+
+const agregarImagenCarrusel = (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se envio ninguna imagen',
+      });
+    }
+
+    const config = readConfig();
+    const carousel = [...config.carousel, req.file.filename];
+    const next = saveConfig({
+      ...config,
+      carousel,
+    });
+
+    return res.json({
+      success: true,
+      message: 'Imagen agregada al carrusel',
+      data: buildResponseData(req, next),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error al agregar imagen del carrusel',
       error: error.message,
     });
   }
@@ -218,26 +300,26 @@ const eliminarLogo = (req, res) => {
 
 const eliminarImagenCarrusel = (req, res) => {
   try {
-    const index = Number(req.params.index);
-    if (!Number.isInteger(index) || index < 0 || index >= MAX_CAROUSEL_IMAGES) {
+    const index = parseIndex(req.params.index);
+    if (index === null) {
       return res.status(400).json({
         success: false,
-        message: `Indice invalido. Debe estar entre 0 y ${MAX_CAROUSEL_IMAGES - 1}`,
+        message: 'Indice invalido',
       });
     }
 
     const config = readConfig();
-    const oldFile = config.carousel[index];
-    if (!oldFile) {
+    if (index >= config.carousel.length) {
       return res.status(404).json({
         success: false,
-        message: 'No hay imagen para ese indice',
+        message: 'No existe imagen para ese indice',
       });
     }
 
+    const oldFile = config.carousel[index];
     removeImageIfExists(oldFile);
     const carousel = [...config.carousel];
-    carousel[index] = null;
+    carousel.splice(index, 1);
     const next = saveConfig({
       ...config,
       carousel,
@@ -290,6 +372,7 @@ module.exports = {
   getConfiguracionPublica,
   subirLogo,
   subirImagenCarrusel,
+  agregarImagenCarrusel,
   eliminarLogo,
   eliminarImagenCarrusel,
   obtenerArchivo,

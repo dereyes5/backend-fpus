@@ -58,6 +58,14 @@ router.delete(
 );
 
 router.post(
+  '/carrusel',
+  verificarToken,
+  verificarPermiso('configuraciones'),
+  uploadImagen.single('imagen'),
+  aparienciaController.agregarImagenCarrusel
+);
+
+router.post(
   '/carrusel/:index',
   verificarToken,
   verificarPermiso('configuraciones'),
@@ -73,4 +81,3 @@ router.delete(
 );
 
 module.exports = router;
-
