@@ -50,9 +50,9 @@ const login = async (req, res) => {
 
     // Verificar contraseña
     const passwordValida = await bcrypt.compare(password, usuario.password_hash);
-    
+
     if (!passwordValida) {
-      logger.warn('Login failed - invalid password', { 
+      logger.warn('Login failed - invalid password', {
         username: nombre_usuario,
         userId: usuario.id_usuario,
       });
@@ -65,7 +65,7 @@ const login = async (req, res) => {
     // Obtener permisos del usuario
     logger.debug('Fetching user permissions', { userId: usuario.id_usuario });
     const permisosResult = await client.query(
-      `SELECT 
+      `SELECT
         cartera_lectura,
         cartera_escritura,
         benefactores_lectura,
@@ -158,7 +158,7 @@ const crearUsuario = async (req, res) => {
     const { nombre_usuario, password, cargo } = req.body;
     const cargoNormalizado = normalizeCargo(cargo);
 
-    logger.info('Creating new user', { 
+    logger.info('Creating new user', {
       username: nombre_usuario,
       createdBy: req.usuario?.id_usuario,
     });
@@ -253,7 +253,7 @@ const asignarPermisos = async (req, res) => {
         aprobaciones,
         aprobaciones_social
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      ON CONFLICT (id_usuario) 
+      ON CONFLICT (id_usuario)
       DO UPDATE SET
         cartera_lectura = $2,
         cartera_escritura = $3,
@@ -315,7 +315,7 @@ const obtenerPerfil = async (req, res) => {
 
     // Obtener permisos
     const permisosResult = await client.query(
-      `SELECT 
+      `SELECT
         cartera_lectura,
         cartera_escritura,
         benefactores_lectura,
@@ -330,7 +330,7 @@ const obtenerPerfil = async (req, res) => {
       [id_usuario]
     );
 
-    const permisos = permisosResult.rows.length > 0 
+    const permisos = permisosResult.rows.length > 0
       ? permisosResult.rows[0]
       : {
           cartera_lectura: false,
@@ -389,7 +389,7 @@ const cambiarPassword = async (req, res) => {
 
     // Verificar contraseña actual
     const passwordValida = await bcrypt.compare(password_actual, usuario.password_hash);
-    
+
     if (!passwordValida) {
       return res.status(401).json({
         success: false,
@@ -428,7 +428,7 @@ const listarUsuarios = async (req, res) => {
     const incluirInactivos = req.query.incluir_inactivos === 'true';
     // Obtener usuarios con sus permisos
     const result = await client.query(
-      `SELECT 
+      `SELECT
         u.id_usuario,
         u.nombre_usuario,
         u.cargo,
@@ -438,7 +438,7 @@ const listarUsuarios = async (req, res) => {
         u.id_sucursal,
         s.iniciales as sucursal_iniciales,
         s.nombre as sucursal_nombre,
-        CASE 
+        CASE
           WHEN s.id_sucursal IS NOT NULL THEN
             json_build_object(
               'id_sucursal', s.id_sucursal,
@@ -447,7 +447,7 @@ const listarUsuarios = async (req, res) => {
             )
           ELSE NULL
         END as sucursal,
-        CASE 
+        CASE
           WHEN p.id_permiso IS NOT NULL THEN
             json_build_object(
               'cartera_lectura', p.cartera_lectura,
@@ -692,8 +692,8 @@ const obtenerFotoPerfil = async (req, res) => {
 
     // Buscar archivo que comience con usuario_${id} y tenga extensión de imagen
     const archivos = fs.readdirSync(uploadPath);
-    const archivoUsuario = archivos.find(file => 
-      file.startsWith(`usuario_${id}.`) && 
+    const archivoUsuario = archivos.find(file =>
+      file.startsWith(`usuario_${id}.`) &&
       /\.(jpg|jpeg|png|webp)$/i.test(file)
     );
 
@@ -705,7 +705,7 @@ const obtenerFotoPerfil = async (req, res) => {
     }
 
     const filePath = path.join(uploadPath, archivoUsuario);
-    
+
     // Verificar que el archivo existe
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({
@@ -743,8 +743,8 @@ const eliminarFotoPerfil = async (req, res) => {
 
     // Buscar archivo que comience con usuario_${idUsuario}
     const archivos = fs.readdirSync(uploadPath);
-    const archivoUsuario = archivos.find(file => 
-      file.startsWith(`usuario_${idUsuario}.`) && 
+    const archivoUsuario = archivos.find(file =>
+      file.startsWith(`usuario_${idUsuario}.`) &&
       /\.(jpg|jpeg|png|webp)$/i.test(file)
     );
 
