@@ -8,6 +8,7 @@
     "dev": "nodemon index.js",
     "init:passwords": "node scripts/init-passwords.js",
     "test:connection": "node scripts/test-connection.js",
+    "diag:preview": "node scripts/diagnostico-validar-preview.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

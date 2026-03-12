@@ -33,18 +33,28 @@ const validarCodigosYaAportados = async (codigosTercero, mes, anio) => {
   const client = await pool.connect();
   try {
     const result = await client.query(
-      `SELECT
-         UPPER(c.cod_tercero) AS cod_tercero,
-         MAX(b.nombre_completo) AS nombre_completo,
+      `WITH benefactores_objetivo AS (
+         SELECT
+           id_benefactor,
+           UPPER(n_convenio) AS cod_tercero,
+           nombre_completo,
+           aporte
+         FROM benefactores
+         WHERE UPPER(n_convenio) = ANY($1)
+           AND tipo_benefactor = 'TITULAR'
+           AND estado_registro = 'APROBADO'
+       )
+       SELECT
+         bo.cod_tercero,
+         bo.nombre_completo,
          MAX(c.fecha_transmision) AS fecha_transmision
-       FROM cobros c
-       JOIN benefactores b ON b.id_benefactor = c.id_benefactor
-       WHERE UPPER(c.cod_tercero) = ANY($1)
-         AND c.estado = 'Proceso O.K.'
+       FROM benefactores_objetivo bo
+       JOIN cobros c ON c.id_benefactor = bo.id_benefactor
+       WHERE c.estado = 'Proceso O.K.'
          AND EXTRACT(MONTH FROM c.fecha_transmision) = $2
          AND EXTRACT(YEAR FROM c.fecha_transmision) = $3
-       GROUP BY UPPER(c.cod_tercero), b.id_benefactor, b.aporte
-       HAVING b.aporte > 0 AND SUM(c.valor_cobrado) >= b.aporte`,
+       GROUP BY bo.cod_tercero, bo.id_benefactor, bo.nombre_completo, bo.aporte
+       HAVING bo.aporte > 0 AND SUM(c.valor_cobrado) >= bo.aporte`,
       [codigosNormalizados, mes, anio]
     );
 
