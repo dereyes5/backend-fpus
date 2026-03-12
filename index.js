@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+// Configurar timezone de la aplicación
+process.env.TZ = 'America/Guayaquil';
+
 const routes = require('./src/routes');
 const logger = require('./src/config/logger');
 const requestLogger = require('./src/middleware/logger.middleware');
@@ -60,7 +63,7 @@ app.use((err, req, res, next) => {
     url: req.originalUrl,
     userId: req.usuario?.id_usuario,
   });
-  
+
   res.status(500).json({
     success: false,
     message: 'Error interno del servidor',
@@ -79,7 +82,7 @@ app.listen(PORT, () => {
 ║   http://localhost:${PORT}                  ║
 ╚═══════════════════════════════════════════╝
   `);
-  
+
   // Inicializar tareas programadas
   inicializarTareasProgramadas();
 });

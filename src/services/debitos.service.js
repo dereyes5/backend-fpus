@@ -1,6 +1,10 @@
 const XLSX = require('xlsx');
 const crypto = require('crypto');
+const moment = require('moment-timezone');
 const pool = require('../config/database');
+
+// Configurar timezone por defecto
+moment.tz.setDefault('America/Guayaquil');
 
 /**
  * Servicio de Importación de Excel Bancario
@@ -123,6 +127,7 @@ const normalizarFormaPago = (valor) => {
 
 /**
  * Parsea una fecha del Excel (puede venir como número de serie, string, o Date)
+ * Utiliza moment-timezone para garantizar que la fecha sea interpretada en timezone America/Guayaquil
  * @param {any} valor - Valor de fecha del Excel
  * @returns {Date|null} Fecha parseada o null
  */
@@ -134,36 +139,42 @@ const parsearFechaExcel = (valor) => {
     return isNaN(valor.getTime()) ? null : valor;
   }
 
+  let momentFecha = null;
+
   // Si es número de serie de Excel (días desde 1900-01-01)
   if (typeof valor === 'number') {
     const fecha = new Date((valor - 25569) * 86400 * 1000);
-    return isNaN(fecha.getTime()) ? null : fecha;
+    if (!isNaN(fecha.getTime())) {
+      // Convertir a moment en timezone Ecuador
+      momentFecha = moment.tz(fecha, 'America/Guayaquil');
+    }
   }
-
   // Si es string, intentar parsear
-  if (typeof valor === 'string') {
+  else if (typeof valor === 'string') {
     const s = valor.trim();
 
     // Formato DD/MM/YYYY o DD-MM-YYYY (el más común en bancos ecuatorianos)
     const dmyMatch = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
     if (dmyMatch) {
       const [, d, m, y] = dmyMatch;
-      const fecha = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-      return isNaN(fecha.getTime()) ? null : fecha;
+      // Parsear como fecha en timezone Ecuador (sin ajustar la hora)
+      momentFecha = moment.tz(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`, 'YYYY-MM-DD', 'America/Guayaquil');
     }
-
     // Formato YYYY-MM-DD (ISO)
-    const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-    if (isoMatch) {
-      const fecha = new Date(s);
-      return isNaN(fecha.getTime()) ? null : fecha;
+    else {
+      const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (isoMatch) {
+        momentFecha = moment.tz(s, 'YYYY-MM-DD', 'America/Guayaquil');
+      } else {
+        // Último intento: intentar parsear directamente en timezone Ecuador
+        momentFecha = moment.tz(s, 'America/Guayaquil');
+      }
     }
+  }
 
-    // Último intento con el constructor nativo
-    const fecha = new Date(s);
-    if (!isNaN(fecha.getTime())) {
-      return fecha;
-    }
+  // Si logramos parsear como moment, retornar como Date
+  if (momentFecha && momentFecha.isValid()) {
+    return momentFecha.toDate();
   }
 
   return null;
@@ -311,7 +322,7 @@ const detectarPeriodoLote = (datos) => {
  * @param {number} idUsuario - ID del usuario que realiza la importación
  * @returns {Promise<object>} Resultado de la importación
  */
-const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
+const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario, mesProvidido, anioProvidido) => {
   const client = await pool.connect();
 
   try {
@@ -320,7 +331,20 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
     console.log(`[Import] PASO 1 OK: ${excel.totalFilas} filas, hash: ${excel.hash.substring(0, 12)}...`);
 
     console.log('[Import] PASO 2: Detectando periodo...');
-    const { mes, anio } = detectarPeriodoLote(excel.datos);
+    const datosDetectados = detectarPeriodoLote(excel.datos);
+    let mes = mesProvidido !== undefined ? mesProvidido : datosDetectados.mes;
+    let anio = anioProvidido !== undefined ? anioProvidido : datosDetectados.anio;
+
+    // Validar que si se proporcionan mes/año, coincidan con los datos del Excel
+    if (mesProvidido !== undefined || anioProvidido !== undefined) {
+      if (datosDetectados.mes !== mes || datosDetectados.anio !== anio) {
+        throw new Error(
+          `Los datos del Excel indican el período ${datosDetectados.mes}/${datosDetectados.anio}, ` +
+          `pero se envió ${mes}/${anio}. Hay una inconsistencia en los datos.`
+        );
+      }
+    }
+
     console.log(`[Import] PASO 2 OK: periodo ${mes}/${anio}`);
 
     console.log('[Import] PASO 3: Verificando duplicado...');
@@ -376,7 +400,7 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
         const dbBenef = await client.query(
           `SELECT id_benefactor, nombre_completo, n_convenio, tipo_benefactor, estado_registro,
                   encode(n_convenio::bytea, 'hex') as hex
-           FROM benefactores 
+           FROM benefactores
            WHERE n_convenio ILIKE $1`,
           [`%${dato.cod_tercero}%`]
         );
@@ -398,7 +422,7 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario) => {
         // Buscar benefactor por cod_tercero (debe ser TITULAR para carga consolidada)
         const benefactorResult = await client.query(
           `SELECT id_benefactor, nombre_completo, tipo_benefactor, LOWER(COALESCE(tipo_afiliacion, '')) AS tipo_afiliacion
-           FROM benefactores 
+           FROM benefactores
            WHERE n_convenio = $1
              AND estado_registro = 'APROBADO'
            ORDER BY CASE WHEN tipo_benefactor = 'TITULAR' THEN 0 ELSE 1 END
@@ -556,7 +580,7 @@ const obtenerLotesImportados = async (filtros = {}) => {
   });
 
   let query = `
-    SELECT 
+    SELECT
       l.id_lote,
       l.nombre_archivo,
       l.mes_proceso,
@@ -614,7 +638,7 @@ const obtenerDetalleLote = async (idLote) => {
   try {
     // Información del lote
     const loteResult = await client.query(
-      `SELECT 
+      `SELECT
         l.*,
         u.nombre_usuario
       FROM lotes_importacion l
@@ -629,7 +653,7 @@ const obtenerDetalleLote = async (idLote) => {
 
     // Registros de cobros del lote
     const cobrosResult = await client.query(
-      `SELECT 
+      `SELECT
         c.id_cobro,
         c.id_benefactor,
         b.nombre_completo,
@@ -653,7 +677,7 @@ const obtenerDetalleLote = async (idLote) => {
 
     // Estados generados del lote
     const estadosResult = await client.query(
-      `SELECT 
+      `SELECT
         e.*,
         b.nombre_completo,
         b.tipo_benefactor

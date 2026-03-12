@@ -11,7 +11,7 @@ const obtenerListaBenefactores = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT 
+      SELECT
         id_benefactor,
         nombre_completo,
         cedula,
@@ -22,7 +22,7 @@ const obtenerListaBenefactores = async (req, res) => {
         tipo_cuenta,
         num_cuenta_tc
       FROM benefactores
-      WHERE tipo_benefactor = 'TITULAR' 
+      WHERE tipo_benefactor = 'TITULAR'
         AND estado_registro = 'APROBADO'
       ORDER BY nombre_completo
     `);
@@ -50,7 +50,7 @@ const obtenerEstadoAportesMesActual = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT 
+      SELECT
         e.*,
         b.n_convenio,
         b.tipo_benefactor,
@@ -58,7 +58,7 @@ const obtenerEstadoAportesMesActual = async (req, res) => {
         COALESCE(cobros_estado.debitados, 0) as cobros_debitados,
         COALESCE(cobros_estado.pendientes, 0) as cobros_pendientes,
         COALESCE(cobros_estado.errores, 0) as cobros_errores,
-        CASE 
+        CASE
           WHEN b.tipo_benefactor = 'DEPENDIENTE'
                AND LOWER(COALESCE(b.tipo_afiliacion, '')) = 'corporativo'
                AND COALESCE(cobros_titular.debitados, 0) > 0
@@ -71,7 +71,7 @@ const obtenerEstadoAportesMesActual = async (req, res) => {
       JOIN benefactores b ON e.id_benefactor = b.id_benefactor
       LEFT JOIN relaciones_dependientes rd ON rd.id_dependiente = e.id_benefactor
       LEFT JOIN LATERAL (
-        SELECT 
+        SELECT
           COUNT(CASE WHEN c.estado = 'Proceso O.K.' THEN 1 END) as debitados,
           COUNT(CASE WHEN c.estado = 'PENDIENTE' THEN 1 END) as pendientes,
           COUNT(CASE WHEN c.estado LIKE 'ERROR%' THEN 1 END) as errores
@@ -177,7 +177,7 @@ const obtenerNoAportados = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT 
+      SELECT
         e.*,
         b.n_convenio,
         COALESCE(cobros_estado.debitados, 0) as cobros_debitados,
@@ -187,7 +187,7 @@ const obtenerNoAportados = async (req, res) => {
       FROM estado_aportes_mes_actual e
       JOIN benefactores b ON e.id_benefactor = b.id_benefactor
       LEFT JOIN LATERAL (
-        SELECT 
+        SELECT
           COUNT(CASE WHEN c.estado = 'Proceso O.K.' THEN 1 END) as debitados,
           COUNT(CASE WHEN c.estado = 'PENDIENTE' THEN 1 END) as pendientes,
           COUNT(CASE WHEN c.estado LIKE 'ERROR%' THEN 1 END) as errores
@@ -223,7 +223,7 @@ const obtenerAportados = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT 
+      SELECT
         e.*,
         b.n_convenio,
         COALESCE(cobros_estado.debitados, 0) as cobros_debitados,
@@ -233,7 +233,7 @@ const obtenerAportados = async (req, res) => {
       FROM estado_aportes_mes_actual e
       JOIN benefactores b ON e.id_benefactor = b.id_benefactor
       LEFT JOIN LATERAL (
-        SELECT 
+        SELECT
           COUNT(CASE WHEN c.estado = 'Proceso O.K.' THEN 1 END) as debitados,
           COUNT(CASE WHEN c.estado = 'PENDIENTE' THEN 1 END) as pendientes,
           COUNT(CASE WHEN c.estado LIKE 'ERROR%' THEN 1 END) as errores
@@ -269,7 +269,7 @@ const obtenerEstadisticas = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT 
+      SELECT
         COUNT(CASE WHEN b.tipo_benefactor = 'TITULAR' THEN 1 END) AS total_titulares,
         COUNT(*) AS total_benefactores,
         COUNT(CASE WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'APORTADO' THEN 1 END) AS aportados,
@@ -326,7 +326,7 @@ const obtenerHistorialCompleto = async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(`
-      SELECT * FROM historial_aportes_mensuales 
+      SELECT * FROM historial_aportes_mensuales
       ORDER BY anio DESC, mes DESC, nombre_completo
     `);
 
@@ -355,9 +355,9 @@ const obtenerHistorialBenefactor = async (req, res) => {
     const { id } = req.params;
 
     const result = await client.query(`
-      SELECT * FROM historial_aportes_mensuales 
+      SELECT * FROM historial_aportes_mensuales
       WHERE id_benefactor = $1
-        AND anio IS NOT NULL 
+        AND anio IS NOT NULL
         AND mes IS NOT NULL
       ORDER BY anio DESC, mes DESC
     `, [id]);
@@ -686,10 +686,14 @@ const importarExcelDebitos = async (req, res) => {
       });
     }
 
+    const { mes, anio } = req.body;
+
     const resultado = await debitosService.importarExcelDebitos(
       req.file.buffer,
       req.file.originalname,
-      req.usuario?.id_usuario // Viene del middleware de autenticación
+      req.usuario?.id_usuario, // Viene del middleware de autenticación
+      mes ? parseInt(mes) : undefined,
+      anio ? parseInt(anio) : undefined
     );
 
     res.json(resultado);
