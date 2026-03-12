@@ -533,6 +533,30 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario, mesProvidi
           continue;
         }
 
+        // Evitar doble débito: si ya existe un cobro exitoso para este benefactor
+        // en el mismo período, se ignora esta fila aunque provenga de otro archivo.
+        const cobroExistenteResult = await client.query(
+          `SELECT id_cobro, fecha_transmision
+           FROM cobros
+           WHERE id_benefactor = $1
+             AND estado = 'Proceso O.K.'
+             AND EXTRACT(MONTH FROM fecha_transmision) = $2
+             AND EXTRACT(YEAR FROM fecha_transmision) = $3
+           LIMIT 1`,
+          [idBenefactor, mes, anio]
+        );
+
+        if (cobroExistenteResult.rows.length > 0) {
+          await client.query('RELEASE SAVEPOINT sp_fila');
+          errores.push({
+            fila: dato.fila_excel,
+            cod_tercero: dato.cod_tercero,
+            error: `Ya existe un débito aportado para este benefactor en el período ${String(mes).padStart(2, '0')}/${anio}`
+          });
+          insertadosFallidos++;
+          continue;
+        }
+
         // Insertar cobro
         await client.query(
           `INSERT INTO cobros (
