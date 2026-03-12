@@ -53,13 +53,9 @@ const validarCodigosYaAportados = async (codigosTercero, mes, anio) => {
   }
 };
 
- */
-
 /**
  * Genera un hash SHA256 del contenido del archivo para detectar duplicados
  * @param {Buffer} buffer - Contenido del archivo
-  obtenerHistorialAportesMensuales,
-  validarCodigosYaAportados
  */
 const generarHashArchivo = (buffer) => {
   return crypto.createHash('sha256').update(buffer).digest('hex');
@@ -848,5 +844,6 @@ module.exports = {
   obtenerLotesImportados,
   obtenerDetalleLote,
   procesarArchivoExcel, // Exportar para testing
-  generarHashArchivo    // Exportar para testing
+  generarHashArchivo,   // Exportar para testing
+  validarCodigosYaAportados
 };
