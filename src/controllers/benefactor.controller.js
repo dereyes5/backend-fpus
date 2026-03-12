@@ -9,7 +9,7 @@ const obtenerBenefactores = async (req, res) => {
   try {
     const { tipo_benefactor, estado_registro, page = 1, limit = 50 } = req.query;
     const { id_usuario, permisos } = req.usuario;
-    
+
     logger.debug('Fetching benefactores', {
       tipo_benefactor,
       estado_registro,
@@ -18,10 +18,10 @@ const obtenerBenefactores = async (req, res) => {
       userId: id_usuario,
       permisos,
     });
-    
-    let query = `SELECT b.*, rd.id_titular 
-                 FROM benefactores b 
-                 LEFT JOIN relaciones_dependientes rd ON b.id_benefactor = rd.id_dependiente 
+
+    let query = `SELECT b.*, rd.id_titular
+                 FROM benefactores b
+                 LEFT JOIN relaciones_dependientes rd ON b.id_benefactor = rd.id_dependiente
                  WHERE 1=1`;
     const params = [];
     let paramCount = 1;
@@ -125,12 +125,15 @@ const obtenerBenefactorPorId = async (req, res) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
-    
+
     const result = await client.query(
-      'SELECT * FROM benefactores WHERE id_benefactor = $1',
+      `SELECT b.*, u.nombre_usuario AS nombre_usuario_carga
+       FROM benefactores b
+       LEFT JOIN usuarios u ON u.id_usuario = b.id_usuario
+       WHERE b.id_benefactor = $1`,
       [id]
     );
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -241,9 +244,9 @@ const crearBenefactor = async (req, res) => {
 
     // Obtener las iniciales de la sucursal del usuario que crea el benefactor
     const sucursalResult = await client.query(
-      `SELECT s.iniciales 
-       FROM usuarios u 
-       INNER JOIN sucursales s ON u.id_sucursal = s.id_sucursal 
+      `SELECT s.iniciales
+       FROM usuarios u
+       INNER JOIN sucursales s ON u.id_sucursal = s.id_sucursal
        WHERE u.id_usuario = $1`,
       [id_usuario]
     );
@@ -294,7 +297,7 @@ const crearBenefactor = async (req, res) => {
     await client.query('COMMIT');
 
     console.log('[Benefactor] Benefactor creado:', result.rows[0].id_benefactor);
-    
+
     // Notificar a usuarios con permisos de aprobación
     try {
       await notificacionesService.notificarCasosPendientes('benefactores');
@@ -718,7 +721,7 @@ const obtenerContrato = async (req, res) => {
     }
 
     const filePath = path.join(uploadPath, contratoFile);
-    
+
     // Enviar el archivo
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${contratoFile}"`);
@@ -773,20 +776,20 @@ const obtenerTodosTitulares = async (req, res) => {
   const client = await pool.connect();
   try {
     const { id_usuario } = req.usuario;
-    
+
     logger.debug('Fetching all titulares for dropdown', {
       userId: id_usuario,
     });
-    
+
     // Obtener TODOS los titulares del sistema, sin importar el usuario
     const query = `
-      SELECT 
+      SELECT
         id_benefactor,
         nombre_completo,
         n_convenio,
         cedula,
         id_usuario
-      FROM benefactores 
+      FROM benefactores
       WHERE tipo_benefactor = 'TITULAR'
       ORDER BY nombre_completo ASC
     `;
