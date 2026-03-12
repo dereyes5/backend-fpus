@@ -9,12 +9,57 @@ moment.tz.setDefault('America/Guayaquil');
 /**
  * Servicio de Importación de Excel Bancario
  * Maneja la importación y procesamiento de archivos Excel con débitos mensuales
+ * Valida en preview qué códigos de tercero ya tienen débito exitoso en el período.
+ * @param {string[]} codigosTercero
+ * @param {number} mes
+ * @param {number} anio
+ * @returns {Promise<Array<{cod_tercero: string, nombre_completo: string, fecha_transmision: Date}>>}
+ */
+const validarCodigosYaAportados = async (codigosTercero, mes, anio) => {
+  if (!Array.isArray(codigosTercero) || codigosTercero.length === 0 || !mes || !anio) {
+    return [];
+  }
+
+  const codigosNormalizados = [...new Set(
+    codigosTercero
+      .map(c => (c || '').toString().trim().toUpperCase())
+      .filter(Boolean)
+  )];
+
+  if (codigosNormalizados.length === 0) {
+    return [];
+  }
+
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `SELECT DISTINCT ON (UPPER(c.cod_tercero))
+         UPPER(c.cod_tercero) AS cod_tercero,
+         b.nombre_completo,
+         c.fecha_transmision
+       FROM cobros c
+       JOIN benefactores b ON b.id_benefactor = c.id_benefactor
+       WHERE UPPER(c.cod_tercero) = ANY($1)
+         AND c.estado = 'Proceso O.K.'
+         AND EXTRACT(MONTH FROM c.fecha_transmision) = $2
+         AND EXTRACT(YEAR FROM c.fecha_transmision) = $3
+       ORDER BY UPPER(c.cod_tercero), c.fecha_transmision DESC`,
+      [codigosNormalizados, mes, anio]
+    );
+
+    return result.rows;
+  } finally {
+    client.release();
+  }
+};
+
  */
 
 /**
  * Genera un hash SHA256 del contenido del archivo para detectar duplicados
  * @param {Buffer} buffer - Contenido del archivo
- * @returns {string} Hash SHA256 en formato hex
+  obtenerHistorialAportesMensuales,
+  validarCodigosYaAportados
  */
 const generarHashArchivo = (buffer) => {
   return crypto.createHash('sha256').update(buffer).digest('hex');

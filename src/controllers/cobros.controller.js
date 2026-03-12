@@ -707,6 +707,39 @@ const importarExcelDebitos = async (req, res) => {
 };
 
 /**
+ * Valida en preview qué códigos de tercero ya tienen débito exitoso en el período.
+ */
+const validarPreviewDebitos = async (req, res) => {
+  try {
+    const { codigosTercero, mes, anio } = req.body;
+
+    if (!Array.isArray(codigosTercero)) {
+      return res.status(400).json({
+        success: false,
+        error: 'codigosTercero debe ser un arreglo'
+      });
+    }
+
+    const resultado = await debitosService.validarCodigosYaAportados(
+      codigosTercero,
+      mes ? parseInt(mes) : undefined,
+      anio ? parseInt(anio) : undefined
+    );
+
+    res.json({
+      success: true,
+      data: resultado
+    });
+  } catch (error) {
+    console.error('Error al validar preview de débitos:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Error al validar preview de débitos'
+    });
+  }
+};
+
+/**
  * Obtener lista de lotes importados
  */
 const obtenerLotesImportados = async (req, res) => {
@@ -893,6 +926,7 @@ module.exports = {
   // Nuevos endpoints de débitos mensuales
   uploadExcel,
   importarExcelDebitos,
+  validarPreviewDebitos,
   obtenerLotesImportados,
   obtenerDetalleLote,
   obtenerEstadoAportesMensualesActual,

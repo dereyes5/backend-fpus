@@ -39,6 +39,7 @@ router.post(
   cobrosController.uploadExcel,
   cobrosController.importarExcelDebitos
 );
+router.post('/debitos/validar-preview', cobrosController.validarPreviewDebitos);
 
 // Gestión de lotes
 router.get('/debitos/lotes', cobrosController.obtenerLotesImportados);
