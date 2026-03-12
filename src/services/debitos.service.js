@@ -33,37 +33,14 @@ const validarCodigosYaAportados = async (codigosTercero, mes, anio) => {
   const client = await pool.connect();
   try {
     const result = await client.query(
-      `WITH codigos AS (
-         SELECT DISTINCT UNNEST($1::text[]) AS cod_tercero
-       ), benefactores_objetivo AS (
-         SELECT
-           c.cod_tercero,
-           b.id_benefactor,
-           b.nombre_completo,
-           b.aporte,
-           b.tipo_benefactor
-         FROM codigos c
-         JOIN LATERAL (
-           SELECT id_benefactor, nombre_completo, aporte, tipo_benefactor
-           FROM benefactores
-           WHERE UPPER(n_convenio) = c.cod_tercero
-             AND estado_registro = 'APROBADO'
-           ORDER BY CASE WHEN tipo_benefactor = 'TITULAR' THEN 0 ELSE 1 END, id_benefactor ASC
-           LIMIT 1
-         ) b ON TRUE
-       )
-       SELECT
-         bo.cod_tercero,
-         bo.nombre_completo,
-         MAX(c.fecha_transmision) AS fecha_transmision
-       FROM benefactores_objetivo bo
-       JOIN cobros c ON c.id_benefactor = bo.id_benefactor
-       WHERE bo.tipo_benefactor = 'TITULAR'
-         AND c.estado = 'Proceso O.K.'
-         AND EXTRACT(MONTH FROM c.fecha_transmision) = $2
-         AND EXTRACT(YEAR FROM c.fecha_transmision) = $3
-       GROUP BY bo.cod_tercero, bo.id_benefactor, bo.nombre_completo, bo.aporte
-       HAVING bo.aporte > 0 AND SUM(c.valor_cobrado) >= bo.aporte`,
+      `SELECT
+         UPPER(b.n_convenio) AS cod_tercero,
+         e.nombre_completo,
+         e.ultima_fecha_aporte AS fecha_transmision
+       FROM obtener_estado_aporte_por_mes($2, $3) e
+       JOIN benefactores b ON b.id_benefactor = e.id_benefactor
+       WHERE UPPER(b.n_convenio) = ANY($1)
+         AND e.estado_aporte = 'APORTADO'`,
       [codigosNormalizados, mes, anio]
     );
 
