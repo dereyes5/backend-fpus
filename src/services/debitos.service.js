@@ -44,7 +44,7 @@ const validarCodigosYaAportados = async (codigosTercero, mes, anio) => {
          AND EXTRACT(MONTH FROM c.fecha_transmision) = $2
          AND EXTRACT(YEAR FROM c.fecha_transmision) = $3
        GROUP BY UPPER(c.cod_tercero), b.id_benefactor, b.aporte
-       HAVING SUM(c.valor_cobrado) >= b.aporte`,
+       HAVING b.aporte > 0 AND SUM(c.valor_cobrado) >= b.aporte`,
       [codigosNormalizados, mes, anio]
     );
 
@@ -576,14 +576,17 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario, mesProvidi
         }
 
         // Evitar doble débito: si ya existe un cobro exitoso para este benefactor
-        // en el mismo período, se ignora esta fila aunque provenga de otro archivo.
+        // en el mismo período (mismo criterio que la vista de cartera: SUM(valor_cobrado) >= aporte)
         const cobroExistenteResult = await client.query(
-          `SELECT id_cobro, fecha_transmision
-           FROM cobros
-           WHERE id_benefactor = $1
-             AND estado = 'Proceso O.K.'
-             AND EXTRACT(MONTH FROM fecha_transmision) = $2
-             AND EXTRACT(YEAR FROM fecha_transmision) = $3
+          `SELECT 1
+           FROM cobros c
+           JOIN benefactores b ON b.id_benefactor = c.id_benefactor
+           WHERE c.id_benefactor = $1
+             AND c.estado = 'Proceso O.K.'
+             AND EXTRACT(MONTH FROM c.fecha_transmision) = $2
+             AND EXTRACT(YEAR FROM c.fecha_transmision) = $3
+           GROUP BY c.id_benefactor, b.aporte
+           HAVING b.aporte > 0 AND SUM(c.valor_cobrado) >= b.aporte
            LIMIT 1`,
           [idBenefactor, mes, anio]
         );
