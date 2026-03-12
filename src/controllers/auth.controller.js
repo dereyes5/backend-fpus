@@ -155,7 +155,8 @@ const login = async (req, res) => {
 const crearUsuario = async (req, res) => {
   const client = await pool.connect();
   try {
-    const { nombre_usuario, password } = req.body;
+    const { nombre_usuario, password, cargo } = req.body;
+    const cargoNormalizado = normalizeCargo(cargo);
 
     logger.info('Creating new user', { 
       username: nombre_usuario,

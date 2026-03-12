@@ -387,6 +387,26 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario, mesProvidi
 
     console.log('[Import] PASO 3 OK: no es duplicado');
 
+    // Detectar cod_tercero duplicados para descartar únicamente esas filas.
+    const filasPorCodTercero = new Map();
+    for (const dato of excel.datos) {
+      const cod = (dato.cod_tercero || '').toString().trim();
+      if (!cod) continue;
+      const codNormalizado = cod.toUpperCase();
+      const filas = filasPorCodTercero.get(codNormalizado) || [];
+      filas.push(dato.fila_excel);
+      filasPorCodTercero.set(codNormalizado, filas);
+    }
+
+    const duplicados = Array.from(filasPorCodTercero.entries())
+      .filter(([, filas]) => filas.length > 1)
+      .map(([cod, filas]) => ({ cod, filas }));
+
+    const codigosDuplicadosSet = new Set(duplicados.map(d => d.cod));
+    if (duplicados.length > 0) {
+      console.warn('[Import] Duplicados detectados. Se excluirán filas con cod_tercero duplicado:', JSON.stringify(duplicados));
+    }
+
     console.log('[Import] PASO 4: Iniciando transacción...');
     await client.query('BEGIN');
 
@@ -409,6 +429,18 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario, mesProvidi
     const errores = [];
 
     for (const dato of excel.datos) {
+      const codNormalizado = (dato.cod_tercero || '').toString().trim().toUpperCase();
+      if (codNormalizado && codigosDuplicadosSet.has(codNormalizado)) {
+        const filasDup = filasPorCodTercero.get(codNormalizado) || [];
+        errores.push({
+          fila: dato.fila_excel,
+          cod_tercero: dato.cod_tercero,
+          error: `Código de tercero duplicado en archivo (filas: ${filasDup.join(', ')})`
+        });
+        insertadosFallidos++;
+        continue;
+      }
+
       // Usar SAVEPOINT por fila: si falla una query, se revierte solo esa operación
       // sin abortar la transacción completa (evita error 25P02)
       await client.query('SAVEPOINT sp_fila');
