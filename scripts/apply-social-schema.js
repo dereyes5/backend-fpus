@@ -13,17 +13,17 @@ const pool = new Pool({
 
 async function aplicarEsquemaSocial() {
   const client = await pool.connect();
-  
+
   try {
     console.log('📋 Conectado a la base de datos');
     console.log('📂 Leyendo archivo social.sql...');
-    
+
     const sqlPath = path.join(__dirname, '../base/social.sql');
     const sql = fs.readFileSync(sqlPath, 'utf8');
-    
+
     console.log('⚙️  Ejecutando script SQL...');
     await client.query(sql);
-    
+
     console.log('\n✅ Script ejecutado exitosamente!\n');
     console.log('📋 Componentes creados/actualizados:');
     console.log('   ✓ beneficiarios_sociales (ficha social ampliada)');

@@ -29,7 +29,7 @@ const storage = multer.diskStorage({
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const destPath = path.join(uploadSeguimientoDir, String(year), month);
     ensureDir(destPath);
-    
+
     cb(null, destPath);
   },
   filename: function (req, file, cb) {
@@ -44,7 +44,7 @@ const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|pdf/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype);
-  
+
   if (mimetype && extname) {
     return cb(null, true);
   } else {
@@ -245,7 +245,7 @@ async function obtenerCasos(req, res) {
       id_usuario_carga: req.query.id_usuario_carga,
       busqueda: req.query.busqueda
     };
-    
+
     // Filtrar valores undefined
     Object.keys(filtros).forEach(key => {
       if (filtros[key] === undefined) {
@@ -264,18 +264,18 @@ async function obtenerCasos(req, res) {
       scopeSoloPropios: usuarioSocialEscritura(req),
       filtros,
     });
-    
+
     const beneficiarios = await socialService.obtenerBeneficiariosSociales(filtros);
-    
+
     res.json({
       total: beneficiarios.length,
       beneficiarios
     });
   } catch (error) {
     console.error('Error al obtener casos sociales:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Error al obtener casos sociales',
-      detalle: error.message 
+      detalle: error.message
     });
   }
 }
@@ -291,21 +291,21 @@ async function obtenerCasoPorId(req, res) {
       await socialService.verificarPropietarioCasoSocial(id, req.usuario.id_usuario);
     }
     const beneficiario = await socialService.obtenerBeneficiarioSocialPorId(id);
-    
+
     res.json(beneficiario);
   } catch (error) {
     console.error('Error al obtener caso social:', error);
-    
+
     if (error.message === 'Beneficiario social no encontrado') {
       return res.status(404).json({ error: error.message });
     }
     if (error.message === 'No autorizado para acceder a este caso social') {
       return res.status(403).json({ error: error.message });
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Error al obtener caso social',
-      detalle: error.message 
+      detalle: error.message
     });
   }
 }
@@ -320,28 +320,28 @@ async function actualizarCaso(req, res) {
     if (!errors.isEmpty()) {
       return res.status(400).json({ errores: errors.array() });
     }
-    
+
     const { id } = req.params;
     await socialService.verificarPropietarioCasoSocial(id, req.usuario.id_usuario);
     const beneficiario = await socialService.actualizarBeneficiarioSocial(id, req.body);
-    
+
     res.json({
       mensaje: 'Caso social actualizado exitosamente',
       beneficiario
     });
   } catch (error) {
     console.error('Error al actualizar caso social:', error);
-    
+
     if (error.message === 'Beneficiario social no encontrado') {
       return res.status(404).json({ error: error.message });
     }
     if (error.message === 'No autorizado para acceder a este caso social') {
       return res.status(403).json({ error: error.message });
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Error al actualizar caso social',
-      detalle: error.message 
+      detalle: error.message
     });
   }
 }
@@ -354,35 +354,35 @@ async function cambiarEstado(req, res) {
   try {
     const { id } = req.params;
     const { estado, observaciones } = req.body;
-    
+
     if (!estado) {
       return res.status(400).json({ error: 'El estado es requerido' });
     }
-    
+
     await socialService.verificarPropietarioCasoSocial(id, req.usuario.id_usuario);
     const beneficiario = await socialService.cambiarEstadoCaso(id, estado, observaciones);
-    
+
     res.json({
       mensaje: 'Estado del caso actualizado exitosamente',
       beneficiario
     });
   } catch (error) {
     console.error('Error al cambiar estado:', error);
-    
+
     if (error.message === 'Beneficiario social no encontrado') {
       return res.status(404).json({ error: error.message });
     }
     if (error.message === 'No autorizado para acceder a este caso social') {
       return res.status(403).json({ error: error.message });
     }
-    
+
     if (error.message === 'Estado no válido') {
       return res.status(400).json({ error: error.message });
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Error al cambiar estado',
-      detalle: error.message 
+      detalle: error.message
     });
   }
 }
@@ -417,7 +417,7 @@ async function agregarSeguimiento(req, res) {
       });
       return res.status(400).json({ error: err.message });
     }
-    
+
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -427,7 +427,7 @@ async function agregarSeguimiento(req, res) {
         }
         return res.status(400).json({ errores: errors.array() });
       }
-      
+
       const { id_beneficiario_social, tipo_evento, descripcion, fecha_evento } = req.body;
       const idUsuario = req.usuario.id_usuario;
 
@@ -440,14 +440,14 @@ async function agregarSeguimiento(req, res) {
       });
 
       await socialService.verificarPropietarioCasoSocial(id_beneficiario_social, idUsuario);
-      
+
       // Procesar fotos
       const fotos = [];
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
           // Ruta relativa desde uploads/seguimiento/
           const relativePath = file.path.split('uploads/seguimiento/')[1];
-          
+
           fotos.push({
             nombre_archivo: file.originalname,
             ruta_archivo: relativePath,
@@ -455,13 +455,13 @@ async function agregarSeguimiento(req, res) {
           });
         }
       }
-      
+
       const data = {
         tipo_evento,
         descripcion,
         fecha_evento
       };
-      
+
       const seguimiento = await socialService.agregarSeguimiento(
         id_beneficiario_social,
         data,
@@ -475,7 +475,7 @@ async function agregarSeguimiento(req, res) {
         id_seguimiento: seguimiento?.id_seguimiento,
         fotosCount: Array.isArray(seguimiento?.fotos) ? seguimiento.fotos.length : 0,
       });
-      
+
       res.status(201).json({
         mensaje: 'Seguimiento agregado exitosamente',
         seguimiento
@@ -489,7 +489,7 @@ async function agregarSeguimiento(req, res) {
           }
         });
       }
-      
+
       console.error('[Social][Seguimiento] Error al agregar seguimiento:', {
         userId: req.usuario?.id_usuario,
         body: req.body,
@@ -503,9 +503,9 @@ async function agregarSeguimiento(req, res) {
       if (error.message === 'No autorizado para acceder a este caso social') {
         return res.status(403).json({ error: error.message });
       }
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Error al agregar seguimiento',
-        detalle: error.message 
+        detalle: error.message
       });
     }
   });
@@ -537,7 +537,7 @@ async function obtenerSeguimiento(req, res) {
       total: Array.isArray(seguimientos) ? seguimientos.length : null,
       firstId: Array.isArray(seguimientos) && seguimientos[0] ? seguimientos[0].id_seguimiento : null,
     });
-    
+
     res.json({
       total: seguimientos.length,
       seguimientos
@@ -555,9 +555,9 @@ async function obtenerSeguimiento(req, res) {
     if (error.message === 'No autorizado para acceder a este caso social') {
       return res.status(403).json({ error: error.message });
     }
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Error al obtener seguimiento',
-      detalle: error.message 
+      detalle: error.message
     });
   }
 }
@@ -570,17 +570,17 @@ async function eliminarSeguimiento(req, res) {
   try {
     const { id } = req.params;
     await socialService.verificarPropietarioSeguimientoSocial(id, req.usuario.id_usuario);
-    
+
     // Primero obtener las fotos para eliminarlas del disco
     const queryFotos = `
       SELECT ruta_archivo FROM fotos_seguimiento WHERE id_seguimiento = $1
     `;
     const pool = require('../config/database');
     const resultFotos = await pool.query(queryFotos, [id]);
-    
+
     // Eliminar seguimiento (las fotos en BD se eliminan en cascada)
     await socialService.eliminarSeguimiento(id);
-    
+
     // Eliminar archivos físicos
     resultFotos.rows.forEach(row => {
       const filePath = path.join(uploadSeguimientoDir, row.ruta_archivo);
@@ -588,23 +588,23 @@ async function eliminarSeguimiento(req, res) {
         fs.unlinkSync(filePath);
       }
     });
-    
+
     res.json({
       mensaje: 'Seguimiento eliminado exitosamente'
     });
   } catch (error) {
     console.error('Error al eliminar seguimiento:', error);
-    
+
     if (error.message === 'Seguimiento no encontrado') {
       return res.status(404).json({ error: error.message });
     }
     if (error.message === 'No autorizado para acceder a este seguimiento') {
       return res.status(403).json({ error: error.message });
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Error al eliminar seguimiento',
-      detalle: error.message 
+      detalle: error.message
     });
   }
 }
@@ -620,22 +620,22 @@ async function eliminarSeguimiento(req, res) {
 async function obtenerEstadisticas(req, res) {
   try {
     const filtros = {};
-    
+
     // Si el usuario no es admin, solo ver sus propias estadísticas
     if (usuarioSocialEscritura(req)) {
       filtros.id_usuario_carga = req.usuario.id_usuario;
     } else if (req.query.id_usuario_carga) {
       filtros.id_usuario_carga = req.query.id_usuario_carga;
     }
-    
+
     const estadisticas = await socialService.obtenerEstadisticas(filtros);
-    
+
     res.json(estadisticas);
   } catch (error) {
     console.error('Error al obtener estadísticas:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Error al obtener estadísticas',
-      detalle: error.message 
+      detalle: error.message
     });
   }
 }
@@ -651,16 +651,16 @@ async function obtenerEstadisticas(req, res) {
 async function obtenerPendientes(req, res) {
   try {
     const pendientes = await socialService.obtenerCasosPendientes();
-    
+
     res.json({
       total: pendientes.length,
       pendientes
     });
   } catch (error) {
     console.error('Error al obtener pendientes:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Error al obtener pendientes',
-      detalle: error.message 
+      detalle: error.message
     });
   }
 }
@@ -674,23 +674,23 @@ async function aprobarCaso(req, res) {
     const { id } = req.params;
     const { comentario } = req.body;
     const idAdmin = req.usuario.id_usuario;
-    
+
     const beneficiario = await socialService.aprobarCasoSocial(id, idAdmin, comentario);
-    
+
     res.json({
       mensaje: 'Caso social aprobado exitosamente',
       beneficiario
     });
   } catch (error) {
     console.error('Error al aprobar caso:', error);
-    
+
     if (error.message === 'Beneficiario social no encontrado') {
       return res.status(404).json({ error: error.message });
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Error al aprobar caso',
-      detalle: error.message 
+      detalle: error.message
     });
   }
 }
@@ -704,29 +704,29 @@ async function rechazarCaso(req, res) {
     const { id } = req.params;
     const { comentario } = req.body;
     const idAdmin = req.usuario.id_usuario;
-    
+
     if (!comentario) {
-      return res.status(400).json({ 
-        error: 'El comentario es obligatorio al rechazar un caso' 
+      return res.status(400).json({
+        error: 'El comentario es obligatorio al rechazar un caso'
       });
     }
-    
+
     const beneficiario = await socialService.rechazarCasoSocial(id, idAdmin, comentario);
-    
+
     res.json({
       mensaje: 'Caso social rechazado',
       beneficiario
     });
   } catch (error) {
     console.error('Error al rechazar caso:', error);
-    
+
     if (error.message === 'Beneficiario social no encontrado') {
       return res.status(404).json({ error: error.message });
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Error al rechazar caso',
-      detalle: error.message 
+      detalle: error.message
     });
   }
 }

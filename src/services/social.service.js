@@ -13,10 +13,10 @@ const pool = require('../config/database');
  */
 async function crearBeneficiarioSocial(data, idUsuarioCarga, archivos = {}) {
   const client = await pool.connect();
-  
+
   try {
     await client.query('BEGIN');
-    
+
     const query = `
       INSERT INTO beneficiarios_sociales (
         nombre_completo, cedula, telefono, email,
@@ -44,7 +44,7 @@ async function crearBeneficiarioSocial(data, idUsuarioCarga, archivos = {}) {
       )
       RETURNING *
     `;
-    
+
     const values = [
       data.nombre_completo,
       data.cedula || null,
@@ -106,7 +106,7 @@ async function crearBeneficiarioSocial(data, idUsuarioCarga, archivos = {}) {
       archivos.firma_nombre || null,
       archivos.firma_ruta || null
     ];
-    
+
     const result = await client.query(query, values);
 
     const beneficiario = result.rows[0];
@@ -131,9 +131,9 @@ async function crearBeneficiarioSocial(data, idUsuarioCarga, archivos = {}) {
         );
       }
     }
-    
+
     await client.query('COMMIT');
-    
+
     return beneficiario;
   } catch (error) {
     await client.query('ROLLBACK');
@@ -151,61 +151,61 @@ async function obtenerBeneficiariosSociales(filtros = {}) {
     SELECT * FROM vista_casos_sociales_completa
     WHERE 1=1
   `;
-  
+
   const values = [];
   let paramCount = 1;
-  
+
   // Filtro por estado
   if (filtros.estado) {
     query += ` AND estado = $${paramCount}`;
     values.push(filtros.estado);
     paramCount++;
   }
-  
+
   // Filtro por estado de registro
   if (filtros.estado_registro) {
     query += ` AND estado_registro = $${paramCount}`;
     values.push(filtros.estado_registro);
     paramCount++;
   }
-  
+
   // Filtro por prioridad
   if (filtros.prioridad) {
     query += ` AND prioridad = $${paramCount}`;
     values.push(filtros.prioridad);
     paramCount++;
   }
-  
+
   // Filtro por ciudad
   if (filtros.ciudad) {
     query += ` AND ciudad ILIKE $${paramCount}`;
     values.push(`%${filtros.ciudad}%`);
     paramCount++;
   }
-  
+
   // Filtro por tipo de caso
   if (filtros.tipo_caso) {
     query += ` AND tipo_caso = $${paramCount}`;
     values.push(filtros.tipo_caso);
     paramCount++;
   }
-  
+
   // Filtro por trabajadora social
   if (filtros.id_usuario_carga) {
     query += ` AND id_usuario_carga = $${paramCount}`;
     values.push(filtros.id_usuario_carga);
     paramCount++;
   }
-  
+
   // Búsqueda por nombre o cédula
   if (filtros.busqueda) {
     query += ` AND (nombre_completo ILIKE $${paramCount} OR cedula ILIKE $${paramCount})`;
     values.push(`%${filtros.busqueda}%`);
     paramCount++;
   }
-  
+
   query += ` ORDER BY fecha_registro DESC`;
-  
+
   const result = await pool.query(query, values);
   return result.rows;
 }
@@ -218,13 +218,13 @@ async function obtenerBeneficiarioSocialPorId(id) {
     SELECT * FROM vista_casos_sociales_completa
     WHERE id_beneficiario_social = $1
   `;
-  
+
   const result = await pool.query(query, [id]);
-  
+
   if (result.rows.length === 0) {
     throw new Error('Beneficiario social no encontrado');
   }
-  
+
   return result.rows[0];
 }
 
@@ -281,20 +281,20 @@ async function verificarPropietarioSeguimientoSocial(idSeguimiento, idUsuario) {
  */
 async function actualizarBeneficiarioSocial(id, data) {
   const client = await pool.connect();
-  
+
   try {
     await client.query('BEGIN');
-    
+
     const setClauses = [];
     const values = [];
     let paramCount = 1;
-    
+
     const camposActualizables = [
       'nombre_completo', 'cedula', 'telefono', 'email', 'direccion',
       'ciudad', 'provincia', 'tipo_caso', 'prioridad', 'estado',
       'descripcion_caso', 'fecha_inicio', 'fecha_cierre', 'observaciones'
     ];
-    
+
     camposActualizables.forEach(campo => {
       if (data[campo] !== undefined) {
         setClauses.push(`${campo} = $${paramCount}`);
@@ -302,28 +302,28 @@ async function actualizarBeneficiarioSocial(id, data) {
         paramCount++;
       }
     });
-    
+
     if (setClauses.length === 0) {
       throw new Error('No hay campos para actualizar');
     }
-    
+
     values.push(id);
-    
+
     const query = `
       UPDATE beneficiarios_sociales
       SET ${setClauses.join(', ')}
       WHERE id_beneficiario_social = $${paramCount}
       RETURNING *
     `;
-    
+
     const result = await client.query(query, values);
-    
+
     if (result.rows.length === 0) {
       throw new Error('Beneficiario social no encontrado');
     }
-    
+
     await client.query('COMMIT');
-    
+
     return result.rows[0];
   } catch (error) {
     await client.query('ROLLBACK');
@@ -338,34 +338,34 @@ async function actualizarBeneficiarioSocial(id, data) {
  */
 async function cambiarEstadoCaso(id, nuevoEstado, observaciones = null) {
   const estadosValidos = ['Activo', 'En seguimiento', 'Cerrado'];
-  
+
   if (!estadosValidos.includes(nuevoEstado)) {
     throw new Error('Estado no válido');
   }
-  
+
   const values = [nuevoEstado, id];
   let query = `
     UPDATE beneficiarios_sociales
     SET estado = $1
   `;
-  
+
   if (nuevoEstado === 'Cerrado') {
     query += `, fecha_cierre = CURRENT_DATE`;
   }
-  
+
   if (observaciones) {
     query += `, observaciones = $3`;
     values.push(observaciones);
   }
-  
+
   query += ` WHERE id_beneficiario_social = $2 RETURNING *`;
-  
+
   const result = await pool.query(query, values);
-  
+
   if (result.rows.length === 0) {
     throw new Error('Beneficiario social no encontrado');
   }
-  
+
   return result.rows[0];
 }
 
@@ -378,7 +378,7 @@ async function cambiarEstadoCaso(id, nuevoEstado, observaciones = null) {
  */
 async function agregarSeguimiento(idBeneficiarioSocial, data, fotos, idUsuario) {
   const client = await pool.connect();
-  
+
   try {
     console.log('[SocialService][Seguimiento] agregarSeguimiento - inicio', {
       idBeneficiarioSocial,
@@ -390,7 +390,7 @@ async function agregarSeguimiento(idBeneficiarioSocial, data, fotos, idUsuario) 
     });
 
     await client.query('BEGIN');
-    
+
     // Insertar seguimiento
     const querySeguimiento = `
       INSERT INTO seguimiento_social (
@@ -399,7 +399,7 @@ async function agregarSeguimiento(idBeneficiarioSocial, data, fotos, idUsuario) 
       ) VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `;
-    
+
     const valuesSeguimiento = [
       idBeneficiarioSocial,
       data.tipo_evento,
@@ -407,10 +407,10 @@ async function agregarSeguimiento(idBeneficiarioSocial, data, fotos, idUsuario) 
       idUsuario,
       data.fecha_evento || new Date()
     ];
-    
+
     const resultSeguimiento = await client.query(querySeguimiento, valuesSeguimiento);
     const seguimiento = resultSeguimiento.rows[0];
-    
+
     // Si hay fotos, insertarlas
     if (fotos && fotos.length > 0) {
       const queryFotos = `
@@ -419,7 +419,7 @@ async function agregarSeguimiento(idBeneficiarioSocial, data, fotos, idUsuario) 
         ) VALUES ($1, $2, $3, $4)
         RETURNING *
       `;
-      
+
       const fotosInsertadas = [];
       for (const foto of fotos) {
         const valuesFoto = [
@@ -428,14 +428,14 @@ async function agregarSeguimiento(idBeneficiarioSocial, data, fotos, idUsuario) 
           foto.ruta_archivo,
           foto.descripcion || null
         ];
-        
+
         const resultFoto = await client.query(queryFotos, valuesFoto);
         fotosInsertadas.push(resultFoto.rows[0]);
       }
-      
+
       seguimiento.fotos = fotosInsertadas;
     }
-    
+
     await client.query('COMMIT');
 
     console.log('[SocialService][Seguimiento] agregarSeguimiento - commit', {
@@ -443,7 +443,7 @@ async function agregarSeguimiento(idBeneficiarioSocial, data, fotos, idUsuario) 
       idBeneficiarioSocial,
       fotosCount: Array.isArray(seguimiento?.fotos) ? seguimiento.fotos.length : 0
     });
-    
+
     return seguimiento;
   } catch (error) {
     await client.query('ROLLBACK');
@@ -468,7 +468,7 @@ async function obtenerSeguimiento(idBeneficiarioSocial) {
   });
 
   const query = `
-    SELECT 
+    SELECT
       s.id_seguimiento,
       s.id_usuario,
       s.tipo_evento,
@@ -496,7 +496,7 @@ async function obtenerSeguimiento(idBeneficiarioSocial) {
     GROUP BY s.id_seguimiento, u.nombre_usuario
     ORDER BY s.fecha_evento DESC, s.fecha_registro DESC
   `;
-  
+
   const result = await pool.query(query, [idBeneficiarioSocial]);
   console.log('[SocialService][Seguimiento] obtenerSeguimiento - resultado', {
     idBeneficiarioSocial,
@@ -511,25 +511,25 @@ async function obtenerSeguimiento(idBeneficiarioSocial) {
  */
 async function eliminarSeguimiento(idSeguimiento) {
   const client = await pool.connect();
-  
+
   try {
     await client.query('BEGIN');
-    
+
     // Las fotos se eliminan en cascada automáticamente
     const query = `
       DELETE FROM seguimiento_social
       WHERE id_seguimiento = $1
       RETURNING *
     `;
-    
+
     const result = await client.query(query, [idSeguimiento]);
-    
+
     if (result.rows.length === 0) {
       throw new Error('Seguimiento no encontrado');
     }
-    
+
     await client.query('COMMIT');
-    
+
     return result.rows[0];
   } catch (error) {
     await client.query('ROLLBACK');
@@ -550,13 +550,13 @@ async function obtenerEstadisticas(filtros = {}) {
   let whereClause = 'WHERE 1=1';
   const values = [];
   let paramCount = 1;
-  
+
   if (filtros.id_usuario_carga) {
     whereClause += ` AND id_usuario_carga = $${paramCount}`;
     values.push(filtros.id_usuario_carga);
     paramCount++;
   }
-  
+
   const query = `
     SELECT
       COUNT(*) FILTER (WHERE estado = 'Activo') AS casos_activos,
@@ -573,12 +573,12 @@ async function obtenerEstadisticas(filtros = {}) {
     FROM beneficiarios_sociales
     ${whereClause}
   `;
-  
+
   const result = await pool.query(query, values);
-  
+
   // Estadísticas por tipo de caso
   const queryTiposCaso = `
-    SELECT 
+    SELECT
       tipo_caso,
       COUNT(*) AS total
     FROM beneficiarios_sociales
@@ -586,9 +586,9 @@ async function obtenerEstadisticas(filtros = {}) {
     GROUP BY tipo_caso
     ORDER BY total DESC
   `;
-  
+
   const resultTipos = await pool.query(queryTiposCaso, values);
-  
+
   return {
     general: result.rows[0],
     por_tipo_caso: resultTipos.rows
@@ -608,7 +608,7 @@ async function obtenerCasosPendientes() {
     WHERE estado_registro = 'PENDIENTE'
     ORDER BY fecha_registro ASC
   `;
-  
+
   const result = await pool.query(query);
   return result.rows;
 }
@@ -618,10 +618,10 @@ async function obtenerCasosPendientes() {
  */
 async function aprobarCasoSocial(idBeneficiarioSocial, idAdmin, comentario = null) {
   const client = await pool.connect();
-  
+
   try {
     await client.query('BEGIN');
-    
+
     // Actualizar estado del caso
     const queryUpdate = `
       UPDATE beneficiarios_sociales
@@ -629,15 +629,15 @@ async function aprobarCasoSocial(idBeneficiarioSocial, idAdmin, comentario = nul
       WHERE id_beneficiario_social = $1
       RETURNING *
     `;
-    
+
     const resultUpdate = await client.query(queryUpdate, [idBeneficiarioSocial]);
-    
+
     if (resultUpdate.rows.length === 0) {
       throw new Error('Beneficiario social no encontrado');
     }
-    
+
     const beneficiario = resultUpdate.rows[0];
-    
+
     // Registrar aprobación
     const queryAprobacion = `
       INSERT INTO aprobaciones_beneficiarios_sociales (
@@ -645,9 +645,9 @@ async function aprobarCasoSocial(idBeneficiarioSocial, idAdmin, comentario = nul
       ) VALUES ($1, $2, 'APROBADO', $3)
       RETURNING *
     `;
-    
+
     await client.query(queryAprobacion, [idBeneficiarioSocial, idAdmin, comentario]);
-    
+
     // Crear notificación para la trabajadora social
     const queryNotificacion = `
       SELECT crear_notificacion(
@@ -658,14 +658,14 @@ async function aprobarCasoSocial(idBeneficiarioSocial, idAdmin, comentario = nul
         $3
       )
     `;
-    
+
     const mensaje = `El caso de ${beneficiario.nombre_completo} ha sido aprobado. Ya puedes continuar con el seguimiento y gestión de apoyos.`;
     const link = `/social/${idBeneficiarioSocial}`;
-    
+
     await client.query(queryNotificacion, [beneficiario.id_usuario_carga, mensaje, link]);
-    
+
     await client.query('COMMIT');
-    
+
     return beneficiario;
   } catch (error) {
     await client.query('ROLLBACK');
@@ -680,14 +680,14 @@ async function aprobarCasoSocial(idBeneficiarioSocial, idAdmin, comentario = nul
  */
 async function rechazarCasoSocial(idBeneficiarioSocial, idAdmin, comentario) {
   const client = await pool.connect();
-  
+
   try {
     await client.query('BEGIN');
-    
+
     if (!comentario) {
       throw new Error('El comentario es obligatorio al rechazar un caso');
     }
-    
+
     // Actualizar estado del caso
     const queryUpdate = `
       UPDATE beneficiarios_sociales
@@ -695,15 +695,15 @@ async function rechazarCasoSocial(idBeneficiarioSocial, idAdmin, comentario) {
       WHERE id_beneficiario_social = $1
       RETURNING *
     `;
-    
+
     const resultUpdate = await client.query(queryUpdate, [idBeneficiarioSocial]);
-    
+
     if (resultUpdate.rows.length === 0) {
       throw new Error('Beneficiario social no encontrado');
     }
-    
+
     const beneficiario = resultUpdate.rows[0];
-    
+
     // Registrar rechazo
     const queryAprobacion = `
       INSERT INTO aprobaciones_beneficiarios_sociales (
@@ -711,9 +711,9 @@ async function rechazarCasoSocial(idBeneficiarioSocial, idAdmin, comentario) {
       ) VALUES ($1, $2, 'RECHAZADO', $3)
       RETURNING *
     `;
-    
+
     await client.query(queryAprobacion, [idBeneficiarioSocial, idAdmin, comentario]);
-    
+
     // Crear notificación para la trabajadora social
     const queryNotificacion = `
       SELECT crear_notificacion(
@@ -724,14 +724,14 @@ async function rechazarCasoSocial(idBeneficiarioSocial, idAdmin, comentario) {
         $3
       )
     `;
-    
+
     const mensaje = `El caso de ${beneficiario.nombre_completo} ha sido rechazado. Motivo: ${comentario}`;
     const link = `/social/${idBeneficiarioSocial}`;
-    
+
     await client.query(queryNotificacion, [beneficiario.id_usuario_carga, mensaje, link]);
-    
+
     await client.query('COMMIT');
-    
+
     return beneficiario;
   } catch (error) {
     await client.query('ROLLBACK');
