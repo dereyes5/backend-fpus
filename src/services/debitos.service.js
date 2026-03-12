@@ -126,6 +126,30 @@ const normalizarFormaPago = (valor) => {
 };
 
 /**
+ * Normaliza el estado del banco al dominio interno permitido por BD.
+ * Reglas de entrada válidas del Excel:
+ * - "Proceso O.K." (cualquier mayúscula/minúscula y variantes O.K/OK)
+ * - "Error: detalle"
+ */
+const normalizarEstadoCobro = (valor) => {
+  if (!valor) return null;
+
+  const estadoRaw = valor.toString().trim();
+  if (!estadoRaw) return null;
+
+  if (/^PROCESO\s*O\.?K\.?$/i.test(estadoRaw)) {
+    return 'Proceso O.K.';
+  }
+
+  if (/^ERROR\s*:\s*.+$/i.test(estadoRaw)) {
+    // En BD se usa catálogo acotado de errores; preservamos el detalle original en estado_banco_raw.
+    return 'ERROR-Otros';
+  }
+
+  return null;
+};
+
+/**
  * Parsea una fecha del Excel (puede venir como número de serie, string, o Date)
  * Utiliza moment-timezone para garantizar que la fecha sea interpretada en timezone America/Guayaquil
  * @param {any} valor - Valor de fecha del Excel
@@ -251,6 +275,7 @@ const procesarArchivoExcel = (buffer, nombreArchivo) => {
       return {
         fila_excel: index + 2, // +2 porque Excel empieza en 1 y la fila 1 es el encabezado
         estado_raw: filaNormalizada.estado?.toString().trim() || '',
+        estado: normalizarEstadoCobro(filaNormalizada.estado),
         moneda: filaNormalizada.moneda?.toString().trim() || 'DOLAR',
         forma_pago: normalizarFormaPago(filaNormalizada.forma_pago),
         valor_cobrado: parseFloat(filaNormalizada.valor_cobrado) || 0,
@@ -465,6 +490,17 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario, mesProvidi
 
         const idBenefactor = benefactor.id_benefactor;
 
+        if (!dato.estado) {
+          await client.query('RELEASE SAVEPOINT sp_fila');
+          errores.push({
+            fila: dato.fila_excel,
+            cod_tercero: dato.cod_tercero,
+            error: `Estado inválido: "${dato.estado_raw}". Válidos: "Proceso O.K." o "Error: detalle"`
+          });
+          insertadosFallidos++;
+          continue;
+        }
+
         // Insertar cobro
         await client.query(
           `INSERT INTO cobros (
@@ -480,7 +516,7 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario, mesProvidi
             dato.fecha_transmision,
             dato.fecha_pago,
             dato.cod_tercero,
-            dato.estado_raw,
+            dato.estado,
             dato.estado_raw,
             dato.moneda,
             dato.forma_pago,
