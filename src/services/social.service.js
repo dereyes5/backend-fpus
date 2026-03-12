@@ -9,9 +9,9 @@ const pool = require('../config/database');
 // ==========================================
 
 /**
- * Crear nuevo caso social
+ * Crear nuevo caso social (ficha ampliada)
  */
-async function crearBeneficiarioSocial(data, idUsuarioCarga) {
+async function crearBeneficiarioSocial(data, idUsuarioCarga, archivos = {}) {
   const client = await pool.connect();
   
   try {
@@ -21,8 +21,27 @@ async function crearBeneficiarioSocial(data, idUsuarioCarga) {
       INSERT INTO beneficiarios_sociales (
         nombre_completo, cedula, telefono, email,
         direccion, ciudad, provincia, tipo_caso, prioridad, estado,
-        descripcion_caso, id_usuario_carga, fecha_inicio, observaciones
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        descripcion_caso, id_usuario_carga, fecha_inicio, observaciones,
+        nombres, apellidos, sexo, edad, nacionalidad, estado_civil, tipo_sangre,
+        fecha_nacimiento, pais, referencia, discapacidad, discapacidad_detalle,
+        con_quien_vive, con_quien_vive_detalle, situacion_vivienda,
+        salud_estado_general, enfermedad_catastrofica, toma_medicacion_constante,
+        alergia_medicamentos, alergia_medicamentos_detalle,
+        nutricion_num_comidas, nutricion_desayuno, nutricion_almuerzo,
+        nutricion_merienda, nutricion_consume_frutas,
+        recursos_economicos, red_social_apoyo, latitud, longitud,
+        se_siente_acompanado, perdida_familiar_reciente, perdida_familiar_detalle,
+        observaciones_conclusiones, fecha_generacion_ficha,
+        ficha_pdf_nombre, ficha_pdf_ruta, firma_nombre, firma_ruta
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18,
+        $19, $20, $21, $22, $23, $24, $25, $26,
+        $27, $28, $29, $30, $31, $32, $33, $34,
+        $35, $36, $37, $38, $39, $40, $41, $42,
+        $43, $44, $45, $46, $47, $48, $49, $50,
+        $51, $52, $53
+      )
       RETURNING *
     `;
     
@@ -40,14 +59,82 @@ async function crearBeneficiarioSocial(data, idUsuarioCarga) {
       data.descripcion_caso,
       idUsuarioCarga,
       data.fecha_inicio || new Date(),
-      data.observaciones || null
+      data.observaciones || null,
+
+      data.nombres,
+      data.apellidos,
+      data.sexo,
+      data.edad || null,
+      data.nacionalidad || null,
+      data.estado_civil || null,
+      data.tipo_sangre || null,
+      data.fecha_nacimiento || null,
+      data.pais || null,
+      data.referencia || null,
+      data.discapacidad === true,
+      data.discapacidad_detalle || null,
+
+      data.con_quien_vive || null,
+      data.con_quien_vive_detalle || null,
+      JSON.stringify(data.situacion_vivienda || {}),
+
+      data.salud_estado_general || null,
+      data.enfermedad_catastrofica === true,
+      data.toma_medicacion_constante === true,
+      data.alergia_medicamentos === true,
+      data.alergia_medicamentos_detalle || null,
+
+      data.nutricion_num_comidas || null,
+      data.nutricion_desayuno === true,
+      data.nutricion_almuerzo === true,
+      data.nutricion_merienda === true,
+      data.nutricion_consume_frutas === true,
+
+      JSON.stringify(data.recursos_economicos || {}),
+      JSON.stringify(data.red_social_apoyo || {}),
+      data.latitud || null,
+      data.longitud || null,
+
+      data.se_siente_acompanado,
+      data.perdida_familiar_reciente,
+      data.perdida_familiar_detalle || null,
+      data.observaciones_conclusiones || null,
+      data.fecha_generacion_ficha || null,
+
+      archivos.ficha_pdf_nombre || null,
+      archivos.ficha_pdf_ruta || null,
+      archivos.firma_nombre || null,
+      archivos.firma_ruta || null
     ];
     
     const result = await client.query(query, values);
+
+    const beneficiario = result.rows[0];
+
+    if (Array.isArray(data.relaciones_familiares)) {
+      const relaciones = data.relaciones_familiares.slice(0, 3);
+      for (let i = 0; i < relaciones.length; i++) {
+        const item = relaciones[i] || {};
+        await client.query(
+          `INSERT INTO social_relaciones_familiares (
+            id_beneficiario_social, orden, nombre_familiar, forma_convivencia, edad, cedula, telefono
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            beneficiario.id_beneficiario_social,
+            i + 1,
+            item.nombre_familiar || 'NO REGISTRADO',
+            item.forma_convivencia || 'OCASIONAL',
+            item.edad || null,
+            item.cedula || null,
+            item.telefono || null
+          ]
+        );
+      }
+    }
     
     await client.query('COMMIT');
     
-    return result.rows[0];
+    return beneficiario;
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -383,6 +470,7 @@ async function obtenerSeguimiento(idBeneficiarioSocial) {
   const query = `
     SELECT 
       s.id_seguimiento,
+      s.id_usuario,
       s.tipo_evento,
       s.descripcion,
       s.fecha_evento,

@@ -12,21 +12,6 @@ router.use(authMiddleware.verificarToken);
 // VALIDACIONES
 // ==========================================
 
-const validarCasoSocial = [
-  body('nombre_completo')
-    .notEmpty().withMessage('El nombre completo es requerido')
-    .isLength({ max: 150 }).withMessage('El nombre no puede exceder 150 caracteres'),
-  body('tipo_caso')
-    .notEmpty().withMessage('El tipo de caso es requerido')
-    .isIn(['Apoyo alimentario', 'Apoyo médico', 'Vivienda', 'Educación', 'Apoyo psicológico', 'Otro'])
-    .withMessage('Tipo de caso no válido'),
-  body('prioridad')
-    .notEmpty().withMessage('La prioridad es requerida')
-    .isIn(['Alta', 'Media', 'Baja']).withMessage('Prioridad no válida'),
-  body('descripcion_caso')
-    .notEmpty().withMessage('La descripción del caso es requerida')
-];
-
 const validarSeguimiento = [
   body('id_beneficiario_social')
     .notEmpty().withMessage('El ID del beneficiario social es requerido')
@@ -55,7 +40,6 @@ const validarSeguimiento = [
 router.post(
   '/beneficiarios',
   permisosMiddleware.verificarPermiso('social', 'escritura'),
-  validarCasoSocial,
   socialController.crearCaso
 );
 

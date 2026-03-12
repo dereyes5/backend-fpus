@@ -6,27 +6,29 @@ const path = require('path');
 const fs = require('fs');
 
 // ==========================================
-// CONFIGURACIÓN MULTER PARA FOTOS
+// CONFIGURACION MULTER
 // ==========================================
 
-// Crear carpeta si no existe
-const uploadDir = path.join(__dirname, '../../uploads/seguimiento');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+const ensureDir = (dirPath) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+};
 
-// Configuración de almacenamiento
+const uploadSeguimientoDir = path.join(__dirname, '../../uploads/seguimiento');
+ensureDir(uploadSeguimientoDir);
+
+const uploadCasosDir = path.join(__dirname, '../../uploads/social/casos');
+ensureDir(uploadCasosDir);
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     // Organizar por año/mes
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const destPath = path.join(uploadDir, String(year), month);
-    
-    if (!fs.existsSync(destPath)) {
-      fs.mkdirSync(destPath, { recursive: true });
-    }
+    const destPath = path.join(uploadSeguimientoDir, String(year), month);
+    ensureDir(destPath);
     
     cb(null, destPath);
   },
@@ -37,7 +39,7 @@ const storage = multer.diskStorage({
   }
 });
 
-// Filtro de archivos (solo imágenes y PDF)
+// Filtro de archivos (solo imagenes y PDF)
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|pdf/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -56,6 +58,72 @@ const uploadFotos = multer({
   fileFilter: fileFilter
 }).array('fotos', 10); // Máximo 10 fotos
 
+const storageCaso = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const now = new Date();
+    const year = String(now.getFullYear());
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const destPath = path.join(uploadCasosDir, year, month);
+    ensureDir(destPath);
+    cb(null, destPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, 'caso-' + uniqueSuffix + ext);
+  }
+});
+
+const fileFilterCaso = (req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (file.fieldname === 'ficha_pdf') {
+    if (ext === '.pdf' && file.mimetype.toLowerCase().includes('pdf')) {
+      return cb(null, true);
+    }
+    return cb(new Error('La ficha social debe subirse en PDF'));
+  }
+
+  if (file.fieldname === 'firma') {
+    if (['.jpg', '.jpeg', '.png'].includes(ext)) {
+      return cb(null, true);
+    }
+    return cb(new Error('La firma debe ser una imagen JPG o PNG'));
+  }
+
+  return cb(new Error('Campo de archivo no permitido'));
+};
+
+const uploadCaso = multer({
+  storage: storageCaso,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: fileFilterCaso
+}).fields([
+  { name: 'ficha_pdf', maxCount: 1 },
+  { name: 'firma', maxCount: 1 }
+]);
+
+const normalizeUpperAsciiText = (value) => {
+  if (value === null || value === undefined) return null;
+  const normalized = String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9\s.,;:/()#-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+  return normalized || null;
+};
+
+const parseMaybeJson = (value, fallback = null) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch (_error) {
+    return fallback;
+  }
+};
+
 const usuarioSocialEscritura = (req) => !!req.usuario?.permisos?.social_escritura;
 
 // ==========================================
@@ -67,37 +135,99 @@ const usuarioSocialEscritura = (req) => !!req.usuario?.permisos?.social_escritur
  * POST /api/social/beneficiarios
  */
 async function crearCaso(req, res) {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errores: errors.array() });
+  uploadCaso(req, res, async function (err) {
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({ error: 'Error al subir archivos: ' + err.message });
     }
-    
-    const idUsuarioCarga = req.usuario.id_usuario;
-    const beneficiario = await socialService.crearBeneficiarioSocial(req.body, idUsuarioCarga);
-    
-    console.log('[Social] Caso social creado:', beneficiario.id_beneficiario_social);
-    
-    // Notificar a usuarios con permisos de aprobación
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
     try {
-      await notificacionesService.notificarCasosPendientes('social');
-      console.log('[Social] Notificaciones enviadas a aprobadores');
-    } catch (notifError) {
-      console.error('[Social] Error al enviar notificaciones:', notifError);
-      // No fallar la creación si falla la notificación
+      const idUsuarioCarga = req.usuario.id_usuario;
+      const files = req.files || {};
+      const fichaPdf = Array.isArray(files.ficha_pdf) ? files.ficha_pdf[0] : null;
+      const firma = Array.isArray(files.firma) ? files.firma[0] : null;
+
+      if (!fichaPdf) {
+        return res.status(400).json({ error: 'Debe adjuntar el PDF de la ficha social' });
+      }
+
+      const nombres = normalizeUpperAsciiText(req.body.nombres);
+      const apellidos = normalizeUpperAsciiText(req.body.apellidos);
+      const sexo = (req.body.sexo || '').toString().trim().toUpperCase();
+
+      if (!nombres || !apellidos || !sexo) {
+        return res.status(400).json({ error: 'Campos requeridos: nombres, apellidos, sexo' });
+      }
+
+      const payload = {
+        ...req.body,
+        nombres,
+        apellidos,
+        nombre_completo: `${nombres} ${apellidos}`.trim(),
+        sexo,
+        nacionalidad: normalizeUpperAsciiText(req.body.nacionalidad),
+        estado_civil: normalizeUpperAsciiText(req.body.estado_civil),
+        tipo_sangre: normalizeUpperAsciiText(req.body.tipo_sangre),
+        direccion: normalizeUpperAsciiText(req.body.direccion),
+        ciudad: normalizeUpperAsciiText(req.body.ciudad),
+        provincia: normalizeUpperAsciiText(req.body.provincia),
+        pais: normalizeUpperAsciiText(req.body.pais),
+        telefono: normalizeUpperAsciiText(req.body.telefono),
+        referencia: normalizeUpperAsciiText(req.body.referencia),
+        discapacidad_detalle: normalizeUpperAsciiText(req.body.discapacidad_detalle),
+        con_quien_vive: normalizeUpperAsciiText(req.body.con_quien_vive),
+        con_quien_vive_detalle: normalizeUpperAsciiText(req.body.con_quien_vive_detalle),
+        salud_estado_general: normalizeUpperAsciiText(req.body.salud_estado_general),
+        alergia_medicamentos_detalle: normalizeUpperAsciiText(req.body.alergia_medicamentos_detalle),
+        perdida_familiar_detalle: normalizeUpperAsciiText(req.body.perdida_familiar_detalle),
+        observaciones_conclusiones: normalizeUpperAsciiText(req.body.observaciones_conclusiones),
+        relaciones_familiares: parseMaybeJson(req.body.relaciones_familiares, []),
+        situacion_vivienda: parseMaybeJson(req.body.situacion_vivienda, {}),
+        recursos_economicos: parseMaybeJson(req.body.recursos_economicos, {}),
+        red_social_apoyo: parseMaybeJson(req.body.red_social_apoyo, {}),
+        discapacidad: String(req.body.discapacidad).toLowerCase() === 'true',
+        enfermedad_catastrofica: String(req.body.enfermedad_catastrofica).toLowerCase() === 'true',
+        toma_medicacion_constante: String(req.body.toma_medicacion_constante).toLowerCase() === 'true',
+        alergia_medicamentos: String(req.body.alergia_medicamentos).toLowerCase() === 'true',
+        nutricion_desayuno: String(req.body.nutricion_desayuno).toLowerCase() === 'true',
+        nutricion_almuerzo: String(req.body.nutricion_almuerzo).toLowerCase() === 'true',
+        nutricion_merienda: String(req.body.nutricion_merienda).toLowerCase() === 'true',
+        nutricion_consume_frutas: String(req.body.nutricion_consume_frutas).toLowerCase() === 'true',
+        se_siente_acompanado: req.body.se_siente_acompanado === undefined ? null : String(req.body.se_siente_acompanado).toLowerCase() === 'true',
+        perdida_familiar_reciente: req.body.perdida_familiar_reciente === undefined ? null : String(req.body.perdida_familiar_reciente).toLowerCase() === 'true',
+      };
+
+      const archivos = {
+        ficha_pdf_nombre: fichaPdf.originalname,
+        ficha_pdf_ruta: fichaPdf.path.split('uploads/social/casos/')[1]?.replace(/\\/g, '/') || null,
+        firma_nombre: firma ? firma.originalname : null,
+        firma_ruta: firma ? (firma.path.split('uploads/social/casos/')[1]?.replace(/\\/g, '/') || null) : null,
+      };
+
+      const beneficiario = await socialService.crearBeneficiarioSocial(payload, idUsuarioCarga, archivos);
+
+      console.log('[Social] Caso social creado:', beneficiario.id_beneficiario_social);
+
+      try {
+        await notificacionesService.notificarCasosPendientes('social');
+      } catch (notifError) {
+        console.error('[Social] Error al enviar notificaciones:', notifError);
+      }
+
+      res.status(201).json({
+        mensaje: 'Caso social creado exitosamente',
+        beneficiario
+      });
+    } catch (error) {
+      console.error('[Social] Error al crear caso social:', error);
+      res.status(500).json({
+        error: 'Error al crear caso social',
+        detalle: error.message
+      });
     }
-    
-    res.status(201).json({
-      mensaje: 'Caso social creado exitosamente',
-      beneficiario
-    });
-  } catch (error) {
-    console.error('[Social] Error al crear caso social:', error);
-    res.status(500).json({ 
-      error: 'Error al crear caso social',
-      detalle: error.message 
-    });
-  }
+  });
 }
 
 /**
@@ -453,7 +583,7 @@ async function eliminarSeguimiento(req, res) {
     
     // Eliminar archivos físicos
     resultFotos.rows.forEach(row => {
-      const filePath = path.join(uploadDir, row.ruta_archivo);
+      const filePath = path.join(uploadSeguimientoDir, row.ruta_archivo);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }

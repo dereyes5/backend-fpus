@@ -25,19 +25,16 @@ async function aplicarEsquemaSocial() {
     await client.query(sql);
     
     console.log('\n✅ Script ejecutado exitosamente!\n');
-    console.log('📋 Componentes creados:');
-    console.log('   ✓ beneficiarios_sociales (tabla)');
-    console.log('   ✓ seguimiento_social (tabla)');
-    console.log('   ✓ fotos_seguimiento (tabla)');
-    console.log('   ✓ aprobaciones_beneficiarios_sociales (tabla)');
-    console.log('   ✓ notificaciones (tabla)');
-    console.log('   ✓ actualizar_fecha_actualizacion() (función)');
-    console.log('   ✓ actualizar_tiene_fotos() (función)');
-    console.log('   ✓ crear_notificacion() (función)');
-    console.log('   ✓ generar_notificaciones_cumpleanos() (función)');
-    console.log('   ✓ vista_casos_sociales_completa (vista)');
-    console.log('   ✓ Datos de ejemplo insertados');
-    console.log('\n🎉 ¡Sistema de Módulo Social y Notificaciones listo para usar!\n');
+    console.log('📋 Componentes creados/actualizados:');
+    console.log('   ✓ beneficiarios_sociales (ficha social ampliada)');
+    console.log('   ✓ social_relaciones_familiares (maximo 3 filas por caso)');
+    console.log('   ✓ seguimiento_social');
+    console.log('   ✓ fotos_seguimiento');
+    console.log('   ✓ aprobaciones_beneficiarios_sociales');
+    console.log('   ✓ actualizar_fecha_actualizacion()');
+    console.log('   ✓ actualizar_tiene_fotos()');
+    console.log('   ✓ vista_casos_sociales_completa');
+    console.log('\n🎉 Esquema del modulo social aplicado correctamente.\n');
   } catch (error) {
     console.error('❌ Error al ejecutar el script:', error);
     throw error;
