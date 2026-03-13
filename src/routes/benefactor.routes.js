@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const benefactorController = require('../controllers/benefactor.controller');
-const { verificarToken } = require('../middleware/auth.middleware');
+const { verificarToken, verificarCualquierPermiso } = require('../middleware/auth.middleware');
 const { validarResultado } = require('../middleware/validator.middleware');
 const { createBenefactorDto, updateBenefactorDto, asignarDependienteDto } = require('../dtos/benefactor.dto');
 
@@ -39,23 +39,28 @@ const upload = multer({
 // Todas las rutas de benefactores requieren autenticación
 router.use(verificarToken);
 
-// Ruta para obtener todos los titulares (debe ir antes de /:id)
-router.get('/titulares', benefactorController.obtenerTodosTitulares);
-router.get('/corporaciones/sugerencias', benefactorController.obtenerSugerenciasCorporacion);
+const verificarAccesoBenefactores = verificarCualquierPermiso([
+  'benefactores_ingresar',
+  'benefactores_administrar',
+]);
 
-router.get('/', benefactorController.obtenerBenefactores);
-router.get('/:id', benefactorController.obtenerBenefactorPorId);
-router.post('/', createBenefactorDto, validarResultado, benefactorController.crearBenefactor);
-router.put('/:id', updateBenefactorDto, validarResultado, benefactorController.actualizarBenefactor);
-router.delete('/:id', benefactorController.eliminarBenefactor);
+// Ruta para obtener todos los titulares (debe ir antes de /:id)
+router.get('/titulares', verificarAccesoBenefactores, benefactorController.obtenerTodosTitulares);
+router.get('/corporaciones/sugerencias', verificarAccesoBenefactores, benefactorController.obtenerSugerenciasCorporacion);
+
+router.get('/', verificarAccesoBenefactores, benefactorController.obtenerBenefactores);
+router.get('/:id', verificarAccesoBenefactores, benefactorController.obtenerBenefactorPorId);
+router.post('/', verificarAccesoBenefactores, createBenefactorDto, validarResultado, benefactorController.crearBenefactor);
+router.put('/:id', verificarAccesoBenefactores, updateBenefactorDto, validarResultado, benefactorController.actualizarBenefactor);
+router.delete('/:id', verificarAccesoBenefactores, benefactorController.eliminarBenefactor);
 
 // Rutas de dependientes
-router.post('/asignar-dependiente', asignarDependienteDto, validarResultado, benefactorController.asignarDependiente);
-router.get('/:id/dependientes', benefactorController.obtenerDependientes);
+router.post('/asignar-dependiente', verificarAccesoBenefactores, asignarDependienteDto, validarResultado, benefactorController.asignarDependiente);
+router.get('/:id/dependientes', verificarAccesoBenefactores, benefactorController.obtenerDependientes);
 
 // Rutas para contratos PDF
-router.post('/:id/contrato', upload.single('contrato'), benefactorController.subirContrato);
-router.get('/:id/contrato', benefactorController.obtenerContrato);
-router.delete('/:id/contrato', benefactorController.eliminarContrato);
+router.post('/:id/contrato', verificarAccesoBenefactores, upload.single('contrato'), benefactorController.subirContrato);
+router.get('/:id/contrato', verificarAccesoBenefactores, benefactorController.obtenerContrato);
+router.delete('/:id/contrato', verificarAccesoBenefactores, benefactorController.eliminarContrato);
 
 module.exports = router;

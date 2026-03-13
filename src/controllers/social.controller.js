@@ -124,7 +124,15 @@ const parseMaybeJson = (value, fallback = null) => {
   }
 };
 
-const usuarioSocialEscritura = (req) => !!req.usuario?.permisos?.social_escritura;
+const puedeIngresarSocial = (req) =>
+  req.usuario?.permisos?.social_ingresar === true ||
+  req.usuario?.permisos?.social_administrar === true;
+
+const puedeAdministrarSocial = (req) =>
+  req.usuario?.permisos?.social_administrar === true;
+
+const alcanceSoloPropiosSocial = (req) =>
+  puedeIngresarSocial(req) && !puedeAdministrarSocial(req);
 
 // ==========================================
 // 1. BENEFICIARIOS SOCIALES
@@ -253,7 +261,7 @@ async function obtenerCasos(req, res) {
       }
     });
 
-    if (usuarioSocialEscritura(req)) {
+    if (alcanceSoloPropiosSocial(req)) {
       filtros.id_usuario_carga = req.usuario.id_usuario;
     }
 
@@ -261,7 +269,7 @@ async function obtenerCasos(req, res) {
       userId: req.usuario?.id_usuario,
       username: req.usuario?.nombre_usuario,
       tokenPermisos: req.usuario?.permisos ? Object.keys(req.usuario.permisos).filter(k => req.usuario.permisos[k]) : null,
-      scopeSoloPropios: usuarioSocialEscritura(req),
+      scopeSoloPropios: alcanceSoloPropiosSocial(req),
       filtros,
     });
 
@@ -287,7 +295,7 @@ async function obtenerCasos(req, res) {
 async function obtenerCasoPorId(req, res) {
   try {
     const { id } = req.params;
-    if (usuarioSocialEscritura(req)) {
+    if (alcanceSoloPropiosSocial(req)) {
       await socialService.verificarPropietarioCasoSocial(id, req.usuario.id_usuario);
     }
     const beneficiario = await socialService.obtenerBeneficiarioSocialPorId(id);
@@ -322,7 +330,9 @@ async function actualizarCaso(req, res) {
     }
 
     const { id } = req.params;
-    await socialService.verificarPropietarioCasoSocial(id, req.usuario.id_usuario);
+    if (alcanceSoloPropiosSocial(req)) {
+      await socialService.verificarPropietarioCasoSocial(id, req.usuario.id_usuario);
+    }
     const beneficiario = await socialService.actualizarBeneficiarioSocial(id, req.body);
 
     res.json({
@@ -359,7 +369,9 @@ async function cambiarEstado(req, res) {
       return res.status(400).json({ error: 'El estado es requerido' });
     }
 
-    await socialService.verificarPropietarioCasoSocial(id, req.usuario.id_usuario);
+    if (alcanceSoloPropiosSocial(req)) {
+      await socialService.verificarPropietarioCasoSocial(id, req.usuario.id_usuario);
+    }
     const beneficiario = await socialService.cambiarEstadoCaso(id, estado, observaciones);
 
     res.json({
@@ -439,7 +451,9 @@ async function agregarSeguimiento(req, res) {
         descripcionLength: typeof descripcion === 'string' ? descripcion.length : 0,
       });
 
-      await socialService.verificarPropietarioCasoSocial(id_beneficiario_social, idUsuario);
+      if (alcanceSoloPropiosSocial(req)) {
+        await socialService.verificarPropietarioCasoSocial(id_beneficiario_social, idUsuario);
+      }
 
       // Procesar fotos
       const fotos = [];
@@ -522,11 +536,11 @@ async function obtenerSeguimiento(req, res) {
       userId: req.usuario?.id_usuario,
       username: req.usuario?.nombre_usuario,
       idBeneficiario,
-      scopeSoloPropios: usuarioSocialEscritura(req),
+      scopeSoloPropios: alcanceSoloPropiosSocial(req),
       query: req.query || {},
     });
 
-    if (usuarioSocialEscritura(req)) {
+    if (alcanceSoloPropiosSocial(req)) {
       await socialService.verificarPropietarioCasoSocial(idBeneficiario, req.usuario.id_usuario);
     }
     const seguimientos = await socialService.obtenerSeguimiento(idBeneficiario);
@@ -569,7 +583,9 @@ async function obtenerSeguimiento(req, res) {
 async function eliminarSeguimiento(req, res) {
   try {
     const { id } = req.params;
-    await socialService.verificarPropietarioSeguimientoSocial(id, req.usuario.id_usuario);
+    if (alcanceSoloPropiosSocial(req)) {
+      await socialService.verificarPropietarioSeguimientoSocial(id, req.usuario.id_usuario);
+    }
 
     // Primero obtener las fotos para eliminarlas del disco
     const queryFotos = `
@@ -622,7 +638,7 @@ async function obtenerEstadisticas(req, res) {
     const filtros = {};
 
     // Si el usuario no es admin, solo ver sus propias estadísticas
-    if (usuarioSocialEscritura(req)) {
+    if (alcanceSoloPropiosSocial(req)) {
       filtros.id_usuario_carga = req.usuario.id_usuario;
     } else if (req.query.id_usuario_carga) {
       filtros.id_usuario_carga = req.query.id_usuario_carga;

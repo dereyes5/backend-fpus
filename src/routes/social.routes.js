@@ -3,10 +3,14 @@ const router = express.Router();
 const socialController = require('../controllers/social.controller');
 const { body } = require('express-validator');
 const authMiddleware = require('../middleware/auth.middleware');
-const permisosMiddleware = require('../middleware/permisos.middleware');
 
 // Todas las rutas requieren autenticación
 router.use(authMiddleware.verificarToken);
+
+const verificarAccesoSocial = authMiddleware.verificarCualquierPermiso([
+  'social_ingresar',
+  'social_administrar',
+]);
 
 // ==========================================
 // VALIDACIONES
@@ -39,7 +43,7 @@ const validarSeguimiento = [
 // Requiere permiso de escritura en social
 router.post(
   '/beneficiarios',
-  permisosMiddleware.verificarPermiso('social', 'escritura'),
+  verificarAccesoSocial,
   socialController.crearCaso
 );
 
@@ -47,28 +51,28 @@ router.post(
 // Requiere permiso de lectura en social
 router.get(
   '/beneficiarios',
-  permisosMiddleware.verificarPermiso('social', 'lectura'),
+  verificarAccesoSocial,
   socialController.obtenerCasos
 );
 
 // Obtener caso por ID
 router.get(
   '/beneficiarios/:id',
-  permisosMiddleware.verificarPermiso('social', 'lectura'),
+  verificarAccesoSocial,
   socialController.obtenerCasoPorId
 );
 
 // Actualizar caso
 router.put(
   '/beneficiarios/:id',
-  permisosMiddleware.verificarPermiso('social', 'escritura'),
+  verificarAccesoSocial,
   socialController.actualizarCaso
 );
 
 // Cambiar estado del caso
 router.put(
   '/beneficiarios/:id/estado',
-  permisosMiddleware.verificarPermiso('social', 'escritura'),
+  verificarAccesoSocial,
   socialController.cambiarEstado
 );
 
@@ -79,7 +83,7 @@ router.put(
 // Agregar seguimiento (con fotos)
 router.post(
   '/seguimiento',
-  permisosMiddleware.verificarPermiso('social', 'escritura'),
+  verificarAccesoSocial,
   // La validación se hace dentro del controller por multer
   socialController.agregarSeguimiento
 );
@@ -87,14 +91,14 @@ router.post(
 // Obtener seguimiento de un caso
 router.get(
   '/seguimiento/:idBeneficiario',
-  permisosMiddleware.verificarPermiso('social', 'lectura'),
+  verificarAccesoSocial,
   socialController.obtenerSeguimiento
 );
 
 // Eliminar seguimiento
 router.delete(
   '/seguimiento/:id',
-  permisosMiddleware.verificarPermiso('social', 'escritura'),
+  verificarAccesoSocial,
   socialController.eliminarSeguimiento
 );
 
@@ -105,7 +109,7 @@ router.delete(
 // Obtener estadísticas
 router.get(
   '/estadisticas',
-  permisosMiddleware.verificarPermiso('social', 'lectura'),
+  verificarAccesoSocial,
   socialController.obtenerEstadisticas
 );
 
@@ -116,21 +120,21 @@ router.get(
 // Obtener casos pendientes de aprobación
 router.get(
   '/aprobaciones/pendientes',
-  permisosMiddleware.verificarPermiso('aprobaciones_social', 'acceso'),
+  authMiddleware.verificarPermiso('aprobaciones_social'),
   socialController.obtenerPendientes
 );
 
 // Aprobar caso
 router.post(
   '/aprobaciones/:id/aprobar',
-  permisosMiddleware.verificarPermiso('aprobaciones_social', 'acceso'),
+  authMiddleware.verificarPermiso('aprobaciones_social'),
   socialController.aprobarCaso
 );
 
 // Rechazar caso
 router.post(
   '/aprobaciones/:id/rechazar',
-  permisosMiddleware.verificarPermiso('aprobaciones_social', 'acceso'),
+  authMiddleware.verificarPermiso('aprobaciones_social'),
   socialController.rechazarCaso
 );
 

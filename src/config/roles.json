@@ -4,10 +4,10 @@
   "permisos_disponibles": {
     "cartera_lectura": "Puede ver información de cartera y aportes",
     "cartera_escritura": "Puede registrar cobros y modificar cartera",
-    "benefactores_lectura": "Puede ver información de benefactores",
-    "benefactores_escritura": "Puede crear y editar benefactores",
-    "social_lectura": "Puede ver información del módulo social",
-    "social_escritura": "Puede editar información del módulo social",
+    "benefactores_ingresar": "Puede ver, crear y editar solo sus propios benefactores",
+    "benefactores_administrar": "Puede ver, crear y editar todos los benefactores",
+    "social_ingresar": "Puede ver, crear y editar solo sus propios casos y seguimientos sociales",
+    "social_administrar": "Puede ver, crear y editar todos los casos y seguimientos sociales",
     "configuraciones": "Acceso al módulo de configuración del sistema",
     "aprobaciones": "Puede aprobar o rechazar benefactores"
   }

@@ -62,7 +62,7 @@ const verificarToken = (req, res, next) => {
 
 /**
  * Middleware para verificar permisos específicos
- * @param {string} permiso - El permiso requerido (ej: 'cartera_lectura', 'benefactores_escritura')
+ * @param {string} permiso - El permiso requerido (ej: 'cartera_lectura', 'benefactores_administrar')
  */
 const verificarPermiso = (permiso) => {
   return (req, res, next) => {

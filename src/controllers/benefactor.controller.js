@@ -4,11 +4,48 @@ const notificacionesService = require('../services/notificaciones.service');
 const path = require('path');
 const fs = require('fs');
 
+const puedeIngresarBenefactores = (req) =>
+  req.usuario?.permisos?.benefactores_ingresar === true ||
+  req.usuario?.permisos?.benefactores_administrar === true;
+
+const puedeAdministrarBenefactores = (req) =>
+  req.usuario?.permisos?.benefactores_administrar === true;
+
+const alcanceSoloPropiosBenefactores = (req) =>
+  puedeIngresarBenefactores(req) && !puedeAdministrarBenefactores(req);
+
+const responderSinPermisoBenefactores = (res) =>
+  res.status(403).json({
+    success: false,
+    message: 'No tienes permisos para acceder al modulo de benefactores',
+  });
+
+const verificarAccesoBenefactor = async (client, idBenefactor, req) => {
+  const result = await client.query(
+    'SELECT id_benefactor, id_usuario FROM benefactores WHERE id_benefactor = $1',
+    [idBenefactor]
+  );
+
+  if (result.rows.length === 0) {
+    return { ok: false, status: 404, message: 'Benefactor no encontrado' };
+  }
+
+  if (alcanceSoloPropiosBenefactores(req) && Number(result.rows[0].id_usuario) !== Number(req.usuario.id_usuario)) {
+    return { ok: false, status: 403, message: 'No autorizado para acceder a este benefactor' };
+  }
+
+  return { ok: true, benefactor: result.rows[0] };
+};
+
 const obtenerBenefactores = async (req, res) => {
   const client = await pool.connect();
   try {
     const { tipo_benefactor, estado_registro, page = 1, limit = 50 } = req.query;
     const { id_usuario, permisos } = req.usuario;
+
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
 
     logger.debug('Fetching benefactores', {
       tipo_benefactor,
@@ -29,18 +66,13 @@ const obtenerBenefactores = async (req, res) => {
     // Lógica de permisos:
     // - Solo lectura (sin escritura): Ve TODOS los benefactores
     // - Lectura + escritura: Ve solo los benefactores creados por él
-    const tieneEscritura = permisos?.benefactores_escritura === true;
-    const tieneSoloLectura = permisos?.benefactores_lectura === true && !tieneEscritura;
-
-    if (tieneEscritura) {
-      // Si tiene escritura, solo ve los suyos
+    if (alcanceSoloPropiosBenefactores(req)) {
       query += ` AND b.id_usuario = $${paramCount}`;
       params.push(id_usuario);
       paramCount++;
-      logger.debug('Filtering by user (has write permission)', { userId: id_usuario });
-    } else if (tieneSoloLectura) {
-      // Si solo tiene lectura, ve todos
-      logger.debug('Showing all benefactores (read-only user)');
+      logger.debug('Filtering benefactores by owner', { userId: id_usuario });
+    } else {
+      logger.debug('Showing all benefactores (admin scope)', { userId: id_usuario });
     }
 
     if (tipo_benefactor) {
@@ -69,7 +101,7 @@ const obtenerBenefactores = async (req, res) => {
     const countParams = [];
     let countParamCount = 1;
 
-    if (tieneEscritura) {
+    if (alcanceSoloPropiosBenefactores(req)) {
       countQuery += ` AND b.id_usuario = $${countParamCount}`;
       countParams.push(id_usuario);
       countParamCount++;
@@ -93,7 +125,7 @@ const obtenerBenefactores = async (req, res) => {
       userId: id_usuario,
       count: result.rows.length,
       total,
-      filtered: tieneEscritura,
+      filtered: alcanceSoloPropiosBenefactores(req),
     });
 
     res.json({
@@ -124,6 +156,10 @@ const obtenerBenefactores = async (req, res) => {
 const obtenerSugerenciasCorporacion = async (req, res) => {
   const client = await pool.connect();
   try {
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
     const termino = String(req.query.q || '').trim();
     const limiteSolicitado = Number.parseInt(req.query.limit, 10);
     const limite = Number.isNaN(limiteSolicitado)
@@ -190,6 +226,18 @@ const obtenerBenefactorPorId = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
+    const acceso = await verificarAccesoBenefactor(client, id, req);
+    if (!acceso.ok) {
+      return res.status(acceso.status).json({
+        success: false,
+        message: acceso.message,
+      });
+    }
+
     const result = await client.query(
       `SELECT b.*, u.nombre_usuario AS nombre_usuario_carga
        FROM benefactores b
@@ -249,6 +297,10 @@ const obtenerBenefactorPorId = async (req, res) => {
 const crearBenefactor = async (req, res) => {
   const client = await pool.connect();
   try {
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
     await client.query('BEGIN');
 
     const {
@@ -392,21 +444,20 @@ const crearBenefactor = async (req, res) => {
 const actualizarBenefactor = async (req, res) => {
   const client = await pool.connect();
   try {
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
     await client.query('BEGIN');
 
     const { id } = req.params;
 
-    // Verificar si el benefactor existe
-    const benefactorExiste = await client.query(
-      'SELECT id_benefactor FROM benefactores WHERE id_benefactor = $1',
-      [id]
-    );
-
-    if (benefactorExiste.rows.length === 0) {
+    const acceso = await verificarAccesoBenefactor(client, id, req);
+    if (!acceso.ok) {
       await client.query('ROLLBACK');
-      return res.status(404).json({
+      return res.status(acceso.status).json({
         success: false,
-        message: 'Benefactor no encontrado',
+        message: acceso.message,
       });
     }
 
@@ -537,15 +588,15 @@ const eliminarBenefactor = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const benefactorExiste = await client.query(
-      'SELECT id_benefactor FROM benefactores WHERE id_benefactor = $1',
-      [id]
-    );
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
 
-    if (benefactorExiste.rows.length === 0) {
-      return res.status(404).json({
+    const acceso = await verificarAccesoBenefactor(client, id, req);
+    if (!acceso.ok) {
+      return res.status(acceso.status).json({
         success: false,
-        message: 'Benefactor no encontrado',
+        message: acceso.message,
       });
     }
 
@@ -570,9 +621,31 @@ const eliminarBenefactor = async (req, res) => {
 const asignarDependiente = async (req, res) => {
   const client = await pool.connect();
   try {
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
     await client.query('BEGIN');
 
     const { id_titular, id_dependiente } = req.body;
+
+    const accesoTitular = await verificarAccesoBenefactor(client, id_titular, req);
+    if (!accesoTitular.ok) {
+      await client.query('ROLLBACK');
+      return res.status(accesoTitular.status).json({
+        success: false,
+        message: accesoTitular.message,
+      });
+    }
+
+    const accesoDependiente = await verificarAccesoBenefactor(client, id_dependiente, req);
+    if (!accesoDependiente.ok) {
+      await client.query('ROLLBACK');
+      return res.status(accesoDependiente.status).json({
+        success: false,
+        message: accesoDependiente.message,
+      });
+    }
 
     // Verificar que el titular existe y es TITULAR
     const titular = await client.query(
@@ -662,6 +735,18 @@ const obtenerDependientes = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
+    const acceso = await verificarAccesoBenefactor(client, id, req);
+    if (!acceso.ok) {
+      return res.status(acceso.status).json({
+        success: false,
+        message: acceso.message,
+      });
+    }
+
     // Verificar que el titular existe
     const titular = await client.query(
       'SELECT tipo_benefactor FROM benefactores WHERE id_benefactor = $1',
@@ -711,6 +796,10 @@ const subirContrato = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -718,14 +807,26 @@ const subirContrato = async (req, res) => {
       });
     }
 
-    // Verificar que el benefactor existe
+    const client = await pool.connect();
+    try {
+      const acceso = await verificarAccesoBenefactor(client, id, req);
+      if (!acceso.ok) {
+        fs.unlinkSync(req.file.path);
+        return res.status(acceso.status).json({
+          success: false,
+          message: acceso.message,
+        });
+      }
+    } finally {
+      client.release();
+    }
+
     const benefactorResult = await pool.query(
       'SELECT id_benefactor FROM benefactores WHERE id_benefactor = $1',
       [id]
     );
 
     if (benefactorResult.rows.length === 0) {
-      // Eliminar el archivo subido si el benefactor no existe
       fs.unlinkSync(req.file.path);
       return res.status(404).json({
         success: false,
@@ -760,6 +861,23 @@ const obtenerContrato = async (req, res) => {
   try {
     const { id } = req.params;
     const { verificar } = req.query;
+
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
+    const client = await pool.connect();
+    try {
+      const acceso = await verificarAccesoBenefactor(client, id, req);
+      if (!acceso.ok) {
+        return res.status(acceso.status).json({
+          success: false,
+          message: acceso.message,
+        });
+      }
+    } finally {
+      client.release();
+    }
 
     // Buscar archivo con cualquier extensión (aunque solo permitimos PDF)
     const uploadPath = path.join(__dirname, '../../uploads/contratos');
@@ -805,6 +923,23 @@ const eliminarContrato = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
+    const client = await pool.connect();
+    try {
+      const acceso = await verificarAccesoBenefactor(client, id, req);
+      if (!acceso.ok) {
+        return res.status(acceso.status).json({
+          success: false,
+          message: acceso.message,
+        });
+      }
+    } finally {
+      client.release();
+    }
+
     const uploadPath = path.join(__dirname, '../../uploads/contratos');
     const files = fs.readdirSync(uploadPath);
     const contratoFile = files.find(file => file.startsWith(`contrato-${id}`));
@@ -841,11 +976,14 @@ const obtenerTodosTitulares = async (req, res) => {
   try {
     const { id_usuario } = req.usuario;
 
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
     logger.debug('Fetching all titulares for dropdown', {
       userId: id_usuario,
     });
 
-    // Obtener TODOS los titulares del sistema, sin importar el usuario
     const query = `
       SELECT
         id_benefactor,
@@ -855,10 +993,11 @@ const obtenerTodosTitulares = async (req, res) => {
         id_usuario
       FROM benefactores
       WHERE tipo_benefactor = 'TITULAR'
+      ${alcanceSoloPropiosBenefactores(req) ? 'AND id_usuario = $1' : ''}
       ORDER BY nombre_completo ASC
     `;
 
-    const result = await client.query(query);
+    const result = await client.query(query, alcanceSoloPropiosBenefactores(req) ? [id_usuario] : []);
 
     logger.info('All titulares fetched for dropdown', {
       userId: id_usuario,
