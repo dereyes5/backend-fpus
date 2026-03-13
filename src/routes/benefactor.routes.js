@@ -41,6 +41,7 @@ router.use(verificarToken);
 
 // Ruta para obtener todos los titulares (debe ir antes de /:id)
 router.get('/titulares', benefactorController.obtenerTodosTitulares);
+router.get('/corporaciones/sugerencias', benefactorController.obtenerSugerenciasCorporacion);
 
 router.get('/', benefactorController.obtenerBenefactores);
 router.get('/:id', benefactorController.obtenerBenefactorPorId);

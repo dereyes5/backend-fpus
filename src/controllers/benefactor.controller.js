@@ -121,6 +121,70 @@ const obtenerBenefactores = async (req, res) => {
   }
 };
 
+const obtenerSugerenciasCorporacion = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const termino = String(req.query.q || '').trim();
+    const limiteSolicitado = Number.parseInt(req.query.limit, 10);
+    const limite = Number.isNaN(limiteSolicitado)
+      ? 8
+      : Math.min(Math.max(limiteSolicitado, 1), 15);
+
+    if (termino.length < 2) {
+      return res.json({
+        success: true,
+        data: [],
+      });
+    }
+
+    const terminoNormalizado = termino.toUpperCase();
+    const terminoPrefijo = `${terminoNormalizado}%`;
+    const terminoContiene = `%${terminoNormalizado}%`;
+
+    const result = await client.query(
+      `SELECT corporacion
+       FROM (
+         SELECT
+           TRIM(corporacion) AS corporacion,
+           COUNT(*) AS uso_total,
+           CASE
+             WHEN UPPER(TRIM(corporacion)) = $1 THEN 0
+             WHEN UPPER(TRIM(corporacion)) LIKE $2 THEN 1
+             WHEN UPPER(TRIM(corporacion)) LIKE $3 THEN 2
+             ELSE 3
+           END AS prioridad,
+           ABS(LENGTH(TRIM(corporacion)) - LENGTH($1)) AS diferencia_longitud
+         FROM benefactores
+         WHERE corporacion IS NOT NULL
+           AND TRIM(corporacion) <> ''
+           AND UPPER(TRIM(corporacion)) LIKE $3
+         GROUP BY TRIM(corporacion)
+       ) sugerencias
+       ORDER BY prioridad ASC, diferencia_longitud ASC, uso_total DESC, corporacion ASC
+       LIMIT $4`,
+      [terminoNormalizado, terminoPrefijo, terminoContiene, limite]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows.map((row) => row.corporacion),
+    });
+  } catch (error) {
+    logger.logError(error, {
+      action: 'obtenerSugerenciasCorporacion',
+      userId: req.usuario?.id_usuario,
+      query: req.query?.q,
+    });
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener sugerencias de corporaciones',
+      error: error.message,
+    });
+  } finally {
+    client.release();
+  }
+};
+
 const obtenerBenefactorPorId = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -822,6 +886,7 @@ const obtenerTodosTitulares = async (req, res) => {
 
 module.exports = {
   obtenerBenefactores,
+  obtenerSugerenciasCorporacion,
   obtenerBenefactorPorId,
   crearBenefactor,
   actualizarBenefactor,
