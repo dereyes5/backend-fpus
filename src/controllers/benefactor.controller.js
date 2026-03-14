@@ -20,6 +20,89 @@ const responderSinPermisoBenefactores = (res) =>
     message: 'No tienes permisos para acceder al modulo de benefactores',
   });
 
+const obtenerInicialesSucursalUsuario = async (client, idUsuario) => {
+  const sucursalResult = await client.query(
+    `SELECT UPPER(TRIM(s.iniciales)) AS iniciales
+     FROM usuarios u
+     INNER JOIN sucursales s ON u.id_sucursal = s.id_sucursal
+     WHERE u.id_usuario = $1`,
+    [idUsuario]
+  );
+
+  return sucursalResult.rows[0]?.iniciales || null;
+};
+
+const obtenerSiguienteConvenioDisponible = async (client, inicialesSucursal, opciones = {}) => {
+  const {
+    bloquear = false,
+    excluirIdBenefactor = null,
+  } = opciones;
+
+  const prefijoNormalizado = String(inicialesSucursal || '').trim().toUpperCase();
+  if (!prefijoNormalizado) {
+    throw new Error('No se pudieron obtener las iniciales de la sucursal');
+  }
+
+  if (bloquear) {
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [`benefactores:n_convenio:${prefijoNormalizado}`]
+    );
+  }
+
+  const params = [prefijoNormalizado];
+  let exclusionSql = '';
+
+  if (excluirIdBenefactor !== null && excluirIdBenefactor !== undefined) {
+    params.push(excluirIdBenefactor);
+    exclusionSql = ` AND id_benefactor <> $${params.length}`;
+  }
+
+  const result = await client.query(
+    `SELECT DISTINCT
+        CAST(
+          (
+            regexp_match(
+              SUBSTRING(UPPER(TRIM(n_convenio)) FROM CHAR_LENGTH($1) + 1),
+              '^([0-9]+)'
+            )
+          )[1] AS INTEGER
+        ) AS numero
+     FROM benefactores
+     WHERE n_convenio IS NOT NULL
+       AND TRIM(n_convenio) <> ''
+       AND estado_registro <> 'RECHAZADO'
+       AND UPPER(TRIM(n_convenio)) LIKE $1 || '%'
+       AND SUBSTRING(UPPER(TRIM(n_convenio)) FROM CHAR_LENGTH($1) + 1) ~ '^[0-9]+'
+       ${exclusionSql}
+     ORDER BY numero ASC`,
+    params
+  );
+
+  const numerosUsados = result.rows
+    .map((row) => Number.parseInt(row.numero, 10))
+    .filter((numero) => Number.isInteger(numero) && numero > 0)
+    .sort((a, b) => a - b);
+
+  let siguienteNumero = 1;
+  for (const numero of numerosUsados) {
+    if (numero === siguienteNumero) {
+      siguienteNumero++;
+      continue;
+    }
+
+    if (numero > siguienteNumero) {
+      break;
+    }
+  }
+
+  const anchoBase = numerosUsados.reduce((maximo, numero) => {
+    return Math.max(maximo, String(numero).length);
+  }, 3);
+
+  return `${prefijoNormalizado}${String(siguienteNumero).padStart(Math.max(3, anchoBase), '0')}`;
+};
+
 const verificarAccesoBenefactor = async (client, idBenefactor, req) => {
   const result = await client.query(
     'SELECT id_benefactor, id_usuario FROM benefactores WHERE id_benefactor = $1',
@@ -221,6 +304,46 @@ const obtenerSugerenciasCorporacion = async (req, res) => {
   }
 };
 
+const obtenerSiguienteConvenio = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
+    const inicialesSucursal = await obtenerInicialesSucursalUsuario(client, req.usuario.id_usuario);
+
+    if (!inicialesSucursal) {
+      return res.status(400).json({
+        success: false,
+        message: 'El usuario no tiene una sucursal asignada',
+      });
+    }
+
+    const nConvenio = await obtenerSiguienteConvenioDisponible(client, inicialesSucursal);
+
+    res.json({
+      success: true,
+      data: {
+        n_convenio: nConvenio,
+        iniciales_sucursal: inicialesSucursal,
+      },
+    });
+  } catch (error) {
+    logger.logError(error, {
+      action: 'obtenerSiguienteConvenio',
+      userId: req.usuario?.id_usuario,
+    });
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener el siguiente numero de convenio',
+      error: error.message,
+    });
+  } finally {
+    client.release();
+  }
+};
+
 const obtenerBenefactorPorId = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -308,7 +431,6 @@ const crearBenefactor = async (req, res) => {
       tipo_afiliacion,
       corporacion,
       cuenta,
-      n_convenio,
       mes_prod,
       fecha_suscripcion,
       nombre_completo,
@@ -358,16 +480,9 @@ const crearBenefactor = async (req, res) => {
       }
     }
 
-    // Obtener las iniciales de la sucursal del usuario que crea el benefactor
-    const sucursalResult = await client.query(
-      `SELECT s.iniciales
-       FROM usuarios u
-       INNER JOIN sucursales s ON u.id_sucursal = s.id_sucursal
-       WHERE u.id_usuario = $1`,
-      [id_usuario]
-    );
+    const iniciales_sucursal = await obtenerInicialesSucursalUsuario(client, id_usuario);
 
-    if (sucursalResult.rows.length === 0) {
+    if (!iniciales_sucursal) {
       await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
@@ -375,7 +490,9 @@ const crearBenefactor = async (req, res) => {
       });
     }
 
-    const iniciales_sucursal = sucursalResult.rows[0].iniciales;
+    const nConvenioGenerado = await obtenerSiguienteConvenioDisponible(client, iniciales_sucursal, {
+      bloquear: true,
+    });
 
     // Generar el número de contrato usando la función de la base de datos
     const numContratoResult = await client.query(
@@ -401,7 +518,7 @@ const crearBenefactor = async (req, res) => {
         tipo_afiliacion,
         tipoAfiliacionNormalizado === 'corporativo' ? corporacionNormalizada : null,
         cuenta,
-        n_convenio,
+        nConvenioGenerado,
         mes_prod,
         fecha_suscripcion, nombre_completo, cedula, nacionalidad, estado_civil,
         fecha_nacimiento, direccion, ciudad, provincia, telefono, email,
@@ -467,7 +584,7 @@ const actualizarBenefactor = async (req, res) => {
     let paramCount = 1;
 
     const camposPermitidos = [
-      'tipo_benefactor', 'tipo_afiliacion', 'cuenta', 'n_convenio', 'mes_prod',
+      'tipo_benefactor', 'tipo_afiliacion', 'cuenta', 'mes_prod',
       'fecha_suscripcion', 'nombre_completo', 'cedula', 'nacionalidad', 'estado_civil',
       'fecha_nacimiento', 'direccion', 'ciudad', 'provincia', 'telefono', 'email',
       'num_cuenta_tc', 'tipo_cuenta', 'banco_emisor', 'inscripcion', 'aporte',
@@ -1026,6 +1143,7 @@ const obtenerTodosTitulares = async (req, res) => {
 module.exports = {
   obtenerBenefactores,
   obtenerSugerenciasCorporacion,
+  obtenerSiguienteConvenio,
   obtenerBenefactorPorId,
   crearBenefactor,
   actualizarBenefactor,

@@ -47,6 +47,7 @@ const verificarAccesoBenefactores = verificarCualquierPermiso([
 // Ruta para obtener todos los titulares (debe ir antes de /:id)
 router.get('/titulares', verificarAccesoBenefactores, benefactorController.obtenerTodosTitulares);
 router.get('/corporaciones/sugerencias', verificarAccesoBenefactores, benefactorController.obtenerSugerenciasCorporacion);
+router.get('/convenio/siguiente', verificarAccesoBenefactores, benefactorController.obtenerSiguienteConvenio);
 
 router.get('/', verificarAccesoBenefactores, benefactorController.obtenerBenefactores);
 router.get('/:id', verificarAccesoBenefactores, benefactorController.obtenerBenefactorPorId);
