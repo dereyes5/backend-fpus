@@ -868,35 +868,145 @@ const obtenerEstadoAportesMensualesActual = async (req, res) => {
 const obtenerHistorialAportesMensuales = async (req, res) => {
   const client = await pool.connect();
   try {
-    const { mes, anio, idBenefactor } = req.query;
+    const {
+      mes,
+      anio,
+      idBenefactor,
+      fechaDesde,
+      fechaHasta,
+      search,
+      estado,
+      page = 1,
+      limit = 10,
+    } = req.query;
 
-    let query = 'SELECT * FROM vista_historial_aportes_completo WHERE 1=1';
+    let query = `
+      FROM vista_historial_aportes_completo v
+      LEFT JOIN benefactores b ON b.id_benefactor = v.id_benefactor
+      WHERE 1=1
+    `;
     const params = [];
     let paramIndex = 1;
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+    const offset = (pageNum - 1) * limitNum;
 
     if (mes) {
       params.push(parseInt(mes));
-      query += ` AND mes = $${paramIndex++}`;
+      query += ` AND v.mes = $${paramIndex++}`;
     }
 
     if (anio) {
       params.push(parseInt(anio));
-      query += ` AND anio = $${paramIndex++}`;
+      query += ` AND v.anio = $${paramIndex++}`;
     }
 
     if (idBenefactor) {
       params.push(parseInt(idBenefactor));
-      query += ` AND id_benefactor = $${paramIndex++}`;
+      query += ` AND v.id_benefactor = $${paramIndex++}`;
     }
 
-    query += ' ORDER BY anio DESC, mes DESC, nombre_completo';
+    if (fechaDesde) {
+      params.push(fechaDesde);
+      query += ` AND v.fecha_transmision::date >= $${paramIndex++}`;
+    }
 
-    const result = await client.query(query, params);
+    if (fechaHasta) {
+      params.push(fechaHasta);
+      query += ` AND v.fecha_transmision::date <= $${paramIndex++}`;
+    }
+
+    if (search) {
+      params.push(`%${String(search).trim().toLowerCase()}%`);
+      query += ` AND (
+        LOWER(v.nombre_completo) LIKE $${paramIndex}
+        OR LOWER(COALESCE(v.cedula, '')) LIKE $${paramIndex}
+        OR LOWER(COALESCE(v.n_convenio, '')) LIKE $${paramIndex}
+      )`;
+      paramIndex++;
+    }
+
+    if (estado && estado !== 'todos') {
+      params.push(String(estado).toUpperCase());
+      query += ` AND v.estado_aporte = $${paramIndex++}`;
+    }
+
+    const summaryResult = await client.query(
+      `
+        SELECT
+          COUNT(*)::integer AS total_registros,
+          COUNT(DISTINCT v.id_benefactor)::integer AS total_benefactores,
+          COUNT(*) FILTER (WHERE v.estado_aporte = 'APORTADO')::integer AS total_aportados,
+          COUNT(*) FILTER (WHERE v.estado_aporte = 'NO_APORTADO')::integer AS total_no_aportados,
+          COALESCE(SUM(COALESCE(b.aporte, 0)), 0)::numeric(12,2) AS total_esperado,
+          COALESCE(
+            SUM(
+              CASE
+                WHEN v.estado_aporte = 'APORTADO' THEN COALESCE(b.aporte, 0)
+                ELSE 0
+              END
+            ),
+            0
+          )::numeric(12,2) AS total_recaudado
+        ${query}
+      `,
+      params
+    );
+
+    const summaryRow = summaryResult.rows[0] || {
+      total_registros: 0,
+      total_benefactores: 0,
+      total_aportados: 0,
+      total_no_aportados: 0,
+      total_esperado: '0.00',
+      total_recaudado: '0.00',
+    };
+
+    const totalEsperado = Number(summaryRow.total_esperado || 0);
+    const totalRecaudado = Number(summaryRow.total_recaudado || 0);
+    const porcentajeRecaudacion = totalEsperado > 0
+      ? ((totalRecaudado / totalEsperado) * 100).toFixed(2)
+      : '0.00';
+
+    const dataParams = [...params, limitNum, offset];
+    const dataResult = await client.query(
+      `
+        SELECT
+          v.*,
+          COALESCE(b.aporte, 0)::numeric(12,2)::text AS monto_esperado,
+          CASE
+            WHEN v.estado_aporte = 'APORTADO' THEN COALESCE(b.aporte, 0)::numeric(12,2)
+            ELSE 0::numeric(12,2)
+          END::text AS monto_aportado
+        ${query}
+        ORDER BY v.anio DESC, v.mes DESC, COALESCE(v.fecha_transmision, v.fecha_registro) DESC NULLS LAST, v.nombre_completo ASC
+        LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+      `,
+      dataParams
+    );
+
+    const totalRecords = Number(summaryRow.total_registros || 0);
+    const totalPages = Math.max(Math.ceil(totalRecords / limitNum), 1);
 
     res.json({
       success: true,
-      data: result.rows,
-      total: result.rows.length
+      data: dataResult.rows,
+      total: totalRecords,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalRecords,
+        pages: totalPages,
+      },
+      summary: {
+        total_benefactores: Number(summaryRow.total_benefactores || 0),
+        total_registros: totalRecords,
+        total_aportados: Number(summaryRow.total_aportados || 0),
+        total_no_aportados: Number(summaryRow.total_no_aportados || 0),
+        total_esperado: Number(totalEsperado).toFixed(2),
+        total_recaudado: Number(totalRecaudado).toFixed(2),
+        porcentaje_recaudacion: porcentajeRecaudacion,
+      }
     });
   } catch (error) {
     console.error('Error al obtener historial de aportes:', error);
