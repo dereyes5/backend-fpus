@@ -355,10 +355,24 @@ const obtenerHistorialBenefactor = async (req, res) => {
     const { id } = req.params;
 
     const result = await client.query(`
-      SELECT * FROM historial_aportes_mensuales
-      WHERE id_benefactor = $1
-        AND anio IS NOT NULL
-        AND mes IS NOT NULL
+      SELECT
+        v.anio,
+        v.mes,
+        v.periodo,
+        COALESCE(b.aporte, 0)::numeric(12,2)::text AS monto_esperado,
+        CASE
+          WHEN v.estado_aporte = 'APORTADO' THEN COALESCE(b.aporte, 0)::numeric(12,2)
+          ELSE 0::numeric(12,2)
+        END::text AS monto_aportado,
+        CASE WHEN v.estado_aporte = 'APORTADO' THEN 1 ELSE 0 END AS aportes_exitosos,
+        CASE WHEN v.estado_aporte = 'NO_APORTADO' THEN 1 ELSE 0 END AS aportes_fallidos,
+        v.fecha_transmision AS ultima_fecha_aporte,
+        v.estado_aporte
+      FROM vista_historial_aportes_completo v
+      JOIN benefactores b ON b.id_benefactor = v.id_benefactor
+      WHERE v.id_benefactor = $1
+        AND v.anio IS NOT NULL
+        AND v.mes IS NOT NULL
       ORDER BY anio DESC, mes DESC
     `, [id]);
 
@@ -810,16 +824,13 @@ const obtenerEstadoAportesMensualesActual = async (req, res) => {
           ELSE 0
         END AS monto_aportado,
         COALESCE(v.estado_aporte, 'NO_APORTADO') AS estado_aporte,
-        CASE
-          WHEN COALESCE(v.estado_aporte, 'NO_APORTADO') = 'APORTADO' THEN 'APORTADO'
-          ELSE 'NO_APORTADO'
-        END AS estado_cobro,
+        COALESCE(v.estado_aporte, 'NO_APORTADO') AS estado_cobro,
         NULL::integer AS cobros_debitados,
         NULL::integer AS cobros_pendientes,
         NULL::integer AS cobros_errores,
         cobros_ultimos.ultima_fecha_aporte,
         COALESCE(v.es_titular, b.tipo_benefactor = 'TITULAR') AS es_titular,
-        v.id_titular_relacionado,
+        COALESCE(v.id_titular_relacionado, rd.id_titular) AS id_titular_relacionado,
         v.nombre_titular,
         COALESCE(v.mes, EXTRACT(MONTH FROM CURRENT_DATE)::integer) AS mes,
         COALESCE(v.anio, EXTRACT(YEAR FROM CURRENT_DATE)::integer) AS anio

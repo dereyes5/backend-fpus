@@ -120,6 +120,14 @@ const verificarAccesoBenefactor = async (client, idBenefactor, req) => {
   return { ok: true, benefactor: result.rows[0] };
 };
 
+const limpiarCamposBancariosDependiente = (payload = {}) => ({
+  ...payload,
+  cuenta: null,
+  num_cuenta_tc: null,
+  tipo_cuenta: null,
+  banco_emisor: null,
+});
+
 const obtenerBenefactores = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -502,6 +510,26 @@ const crearBenefactor = async (req, res) => {
 
     const num_contrato = numContratoResult.rows[0].num_contrato;
 
+    const datosPersistidos = tipo_benefactor === 'DEPENDIENTE'
+      ? limpiarCamposBancariosDependiente({
+          tipo_benefactor,
+          tipo_afiliacion,
+          corporacion: tipoAfiliacionNormalizado === 'corporativo' ? corporacionNormalizada : null,
+          cuenta,
+          num_cuenta_tc,
+          tipo_cuenta,
+          banco_emisor,
+        })
+      : {
+          tipo_benefactor,
+          tipo_afiliacion,
+          corporacion: tipoAfiliacionNormalizado === 'corporativo' ? corporacionNormalizada : null,
+          cuenta,
+          num_cuenta_tc,
+          tipo_cuenta,
+          banco_emisor,
+        };
+
     const result = await client.query(
       `INSERT INTO benefactores (
         tipo_benefactor, tipo_afiliacion, corporacion, cuenta, n_convenio, mes_prod,
@@ -514,15 +542,15 @@ const crearBenefactor = async (req, res) => {
         $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, 'PENDIENTE', $26
       ) RETURNING *`,
       [
-        tipo_benefactor,
-        tipo_afiliacion,
-        tipoAfiliacionNormalizado === 'corporativo' ? corporacionNormalizada : null,
-        cuenta,
+        datosPersistidos.tipo_benefactor,
+        datosPersistidos.tipo_afiliacion,
+        datosPersistidos.corporacion,
+        datosPersistidos.cuenta,
         nConvenioGenerado,
         mes_prod,
         fecha_suscripcion, nombre_completo, cedula, nacionalidad, estado_civil,
         fecha_nacimiento, direccion, ciudad, provincia, telefono, email,
-        num_cuenta_tc, tipo_cuenta, banco_emisor, inscripcion, aporte,
+        datosPersistidos.num_cuenta_tc, datosPersistidos.tipo_cuenta, datosPersistidos.banco_emisor, inscripcion, aporte,
         observacion, estado, id_usuario, num_contrato,
       ]
     );
@@ -576,6 +604,18 @@ const actualizarBenefactor = async (req, res) => {
         success: false,
         message: acceso.message,
       });
+    }
+
+    const tipoBenefactorActualResult = await client.query(
+      'SELECT tipo_benefactor FROM benefactores WHERE id_benefactor = $1',
+      [id]
+    );
+    const tipoBenefactorEfectivo = req.body.tipo_benefactor !== undefined
+      ? req.body.tipo_benefactor
+      : tipoBenefactorActualResult.rows[0]?.tipo_benefactor;
+
+    if (tipoBenefactorEfectivo === 'DEPENDIENTE') {
+      req.body = limpiarCamposBancariosDependiente(req.body);
     }
 
     // Construir query dinámicamente
