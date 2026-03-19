@@ -606,6 +606,40 @@ const cambiarEstadoUsuario = async (req, res) => {
       });
     }
 
+    if (!activo) {
+      const benefactoresActivos = await client.query(
+        `SELECT COUNT(*)::int AS total
+         FROM benefactores
+         WHERE id_usuario = $1
+           AND COALESCE(estado_registro, 'APROBADO') <> 'RECHAZADO'
+           AND COALESCE(UPPER(estado), 'ACTIVO') IN ('ACTIVO', 'ACTIVE')`,
+        [idUsuarioObjetivo]
+      );
+
+      if ((benefactoresActivos.rows[0]?.total || 0) > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No puedes deshabilitar este usuario mientras tenga benefactores activos. Primero inactiva todos sus benefactores.',
+        });
+      }
+
+      const casosSocialesAbiertos = await client.query(
+        `SELECT COUNT(*)::int AS total
+         FROM beneficiarios_sociales
+         WHERE id_usuario_carga = $1
+           AND COALESCE(estado_registro, 'APROBADO') <> 'RECHAZADO'
+           AND COALESCE(estado, 'Activo') <> 'Cerrado'`,
+        [idUsuarioObjetivo]
+      );
+
+      if ((casosSocialesAbiertos.rows[0]?.total || 0) > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No puedes deshabilitar este usuario mientras tenga casos sociales abiertos. Primero cierra todos sus casos sociales.',
+        });
+      }
+    }
+
     let result;
     try {
       result = await client.query(

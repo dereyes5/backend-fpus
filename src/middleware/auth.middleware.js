@@ -1,8 +1,9 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../config/logger');
+const pool = require('../config/database');
 require('dotenv').config();
 
-const verificarToken = (req, res, next) => {
+const verificarToken = async (req, res, next) => {
   try {
     // Intentar obtener token del header Authorization o de query params
     let token = req.headers.authorization?.split(' ')[1];
@@ -25,6 +26,34 @@ const verificarToken = (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const usuarioResult = await pool.query(
+      `SELECT activo
+       FROM usuarios
+       WHERE id_usuario = $1`,
+      [decoded.id_usuario]
+    );
+
+    if (usuarioResult.rows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Usuario no encontrado',
+      });
+    }
+
+    if (usuarioResult.rows[0].activo === false) {
+      logger.warn('Token blocked - inactive user', {
+        userId: decoded.id_usuario,
+        username: decoded.nombre_usuario,
+        url: req.originalUrl,
+      });
+      return res.status(403).json({
+        success: false,
+        message: 'Usuario inactivo. Contacta al administrador.',
+      });
+    }
+
+    decoded.activo = true;
     req.usuario = decoded;
     
     logger.debug('Token verified successfully', {
