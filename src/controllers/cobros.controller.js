@@ -359,6 +359,7 @@ const obtenerHistorialBenefactor = async (req, res) => {
         v.anio,
         v.mes,
         v.periodo,
+        COALESCE(ge.n_convenio_cartera, b.n_convenio) AS n_convenio,
         COALESCE(b.aporte, 0)::numeric(12,2)::text AS monto_esperado,
         CASE
           WHEN v.estado_aporte = 'APORTADO' THEN COALESCE(b.aporte, 0)::numeric(12,2)
@@ -370,6 +371,7 @@ const obtenerHistorialBenefactor = async (req, res) => {
         v.estado_aporte
       FROM vista_historial_aportes_completo v
       JOIN benefactores b ON b.id_benefactor = v.id_benefactor
+      LEFT JOIN grupos_cobro_externo ge ON ge.id_grupo_cobro = b.id_grupo_cobro_externo
       WHERE v.id_benefactor = $1
         AND v.anio IS NOT NULL
         AND v.mes IS NOT NULL
@@ -816,7 +818,7 @@ const obtenerEstadoAportesMensualesActual = async (req, res) => {
         b.id_benefactor,
         b.nombre_completo,
         b.cedula,
-        b.n_convenio,
+        COALESCE(ge.n_convenio_cartera, b.n_convenio) AS n_convenio,
         b.corporacion,
         COALESCE(b.aporte, 0) AS monto_esperado,
         CASE
@@ -835,6 +837,8 @@ const obtenerEstadoAportesMensualesActual = async (req, res) => {
         COALESCE(v.mes, EXTRACT(MONTH FROM CURRENT_DATE)::integer) AS mes,
         COALESCE(v.anio, EXTRACT(YEAR FROM CURRENT_DATE)::integer) AS anio
       FROM benefactores b
+      LEFT JOIN grupos_cobro_externo ge
+        ON ge.id_grupo_cobro = b.id_grupo_cobro_externo
       LEFT JOIN vista_estado_aportes_actual v
         ON v.id_benefactor = b.id_benefactor
       LEFT JOIN relaciones_dependientes rd
@@ -894,6 +898,7 @@ const obtenerHistorialAportesMensuales = async (req, res) => {
     let query = `
       FROM vista_historial_aportes_completo v
       LEFT JOIN benefactores b ON b.id_benefactor = v.id_benefactor
+      LEFT JOIN grupos_cobro_externo ge ON ge.id_grupo_cobro = b.id_grupo_cobro_externo
       WHERE 1=1
     `;
     const params = [];
@@ -932,7 +937,7 @@ const obtenerHistorialAportesMensuales = async (req, res) => {
       query += ` AND (
         LOWER(v.nombre_completo) LIKE $${paramIndex}
         OR LOWER(COALESCE(v.cedula, '')) LIKE $${paramIndex}
-        OR LOWER(COALESCE(v.n_convenio, '')) LIKE $${paramIndex}
+        OR LOWER(COALESCE(ge.n_convenio_cartera, v.n_convenio, '')) LIKE $${paramIndex}
       )`;
       paramIndex++;
     }
@@ -984,6 +989,7 @@ const obtenerHistorialAportesMensuales = async (req, res) => {
       `
         SELECT
           v.*,
+          COALESCE(ge.n_convenio_cartera, v.n_convenio) AS n_convenio,
           COALESCE(b.aporte, 0)::numeric(12,2)::text AS monto_esperado,
           CASE
             WHEN v.estado_aporte = 'APORTADO' THEN COALESCE(b.aporte, 0)::numeric(12,2)

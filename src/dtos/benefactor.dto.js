@@ -70,6 +70,10 @@ const createBenefactorDto = [
     .trim()
     .isLength({ max: 20 })
     .withMessage('El estado no puede exceder 20 caracteres'),
+  body('id_grupo_cobro_externo')
+    .optional({ nullable: true })
+    .isInt({ min: 1 })
+    .withMessage('El grupo de cobro externo debe ser un ID valido'),
 ];
 
 const updateBenefactorDto = [
@@ -130,6 +134,10 @@ const updateBenefactorDto = [
     .trim()
     .isLength({ max: 20 })
     .withMessage('El estado no puede exceder 20 caracteres'),
+  body('id_grupo_cobro_externo')
+    .optional({ nullable: true })
+    .isInt({ min: 1 })
+    .withMessage('El grupo de cobro externo debe ser un ID valido'),
 ];
 
 const asignarDependienteDto = [

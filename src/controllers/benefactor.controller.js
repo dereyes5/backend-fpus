@@ -128,6 +128,37 @@ const limpiarCamposBancariosDependiente = (payload = {}) => ({
   banco_emisor: null,
 });
 
+const limpiarCamposBancariosGrupoExterno = (payload = {}) => ({
+  ...payload,
+  cuenta: null,
+  num_cuenta_tc: null,
+  tipo_cuenta: null,
+  banco_emisor: null,
+});
+
+const obtenerGrupoCobroExternoValido = async (client, idGrupoCobroExterno) => {
+  if (idGrupoCobroExterno === null || idGrupoCobroExterno === undefined || idGrupoCobroExterno === '') {
+    return null;
+  }
+
+  const result = await client.query(
+    `SELECT id_grupo_cobro, nombre_grupo, n_convenio_cartera, activo
+     FROM grupos_cobro_externo
+     WHERE id_grupo_cobro = $1`,
+    [idGrupoCobroExterno]
+  );
+
+  if (result.rows.length === 0) {
+    return { ok: false, message: 'Grupo de cobro externo no encontrado' };
+  }
+
+  if (result.rows[0].activo !== true) {
+    return { ok: false, message: 'El grupo de cobro externo esta inactivo' };
+  }
+
+  return { ok: true, data: result.rows[0] };
+};
+
 const obtenerBenefactores = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -147,9 +178,13 @@ const obtenerBenefactores = async (req, res) => {
       permisos,
     });
 
-    let query = `SELECT b.*, rd.id_titular
+    let query = `SELECT b.*, rd.id_titular,
+                        ge.id_grupo_cobro,
+                        ge.nombre_grupo AS nombre_grupo_cobro_externo,
+                        ge.n_convenio_cartera
                  FROM benefactores b
                  LEFT JOIN relaciones_dependientes rd ON b.id_benefactor = rd.id_dependiente
+                 LEFT JOIN grupos_cobro_externo ge ON ge.id_grupo_cobro = b.id_grupo_cobro_externo
                  WHERE 1=1`;
     const params = [];
     let paramCount = 1;
@@ -370,9 +405,15 @@ const obtenerBenefactorPorId = async (req, res) => {
     }
 
     const result = await client.query(
-      `SELECT b.*, u.nombre_usuario AS nombre_usuario_carga
+      `SELECT b.*, u.nombre_usuario AS nombre_usuario_carga,
+              ge.id_grupo_cobro,
+              ge.nombre_grupo AS nombre_grupo_cobro_externo,
+              ge.n_convenio_cartera,
+              ge.nombre_titular_externo,
+              ge.cedula_titular_externo
        FROM benefactores b
        LEFT JOIN usuarios u ON u.id_usuario = b.id_usuario
+       LEFT JOIN grupos_cobro_externo ge ON ge.id_grupo_cobro = b.id_grupo_cobro_externo
        WHERE b.id_benefactor = $1`,
       [id]
     );
@@ -454,6 +495,7 @@ const crearBenefactor = async (req, res) => {
       num_cuenta_tc,
       tipo_cuenta,
       banco_emisor,
+      id_grupo_cobro_externo,
       inscripcion,
       aporte,
       observacion,
@@ -463,6 +505,26 @@ const crearBenefactor = async (req, res) => {
     const id_usuario = req.usuario.id_usuario;
     const tipoAfiliacionNormalizado = String(tipo_afiliacion || '').toLowerCase();
     const corporacionNormalizada = corporacion?.trim() || null;
+    const idGrupoCobroExternoNormalizado = id_grupo_cobro_externo ? Number(id_grupo_cobro_externo) : null;
+
+    if (tipo_benefactor === 'DEPENDIENTE' && idGrupoCobroExternoNormalizado) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        message: 'Un dependiente clasico no puede vincularse a un grupo externo',
+      });
+    }
+
+    if (idGrupoCobroExternoNormalizado) {
+      const grupoValido = await obtenerGrupoCobroExternoValido(client, idGrupoCobroExternoNormalizado);
+      if (!grupoValido?.ok) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: grupoValido?.message || 'Grupo de cobro externo invalido',
+        });
+      }
+    }
 
     if (tipoAfiliacionNormalizado === 'corporativo' && !corporacionNormalizada) {
       await client.query('ROLLBACK');
@@ -520,6 +582,16 @@ const crearBenefactor = async (req, res) => {
           tipo_cuenta,
           banco_emisor,
         })
+      : idGrupoCobroExternoNormalizado
+        ? limpiarCamposBancariosGrupoExterno({
+            tipo_benefactor,
+            tipo_afiliacion,
+            corporacion: tipoAfiliacionNormalizado === 'corporativo' ? corporacionNormalizada : null,
+            cuenta,
+            num_cuenta_tc,
+            tipo_cuenta,
+            banco_emisor,
+          })
       : {
           tipo_benefactor,
           tipo_afiliacion,
@@ -535,11 +607,11 @@ const crearBenefactor = async (req, res) => {
         tipo_benefactor, tipo_afiliacion, corporacion, cuenta, n_convenio, mes_prod,
         fecha_suscripcion, nombre_completo, cedula, nacionalidad, estado_civil,
         fecha_nacimiento, direccion, ciudad, provincia, telefono, email,
-        num_cuenta_tc, tipo_cuenta, banco_emisor, inscripcion, aporte,
-        observacion, estado, id_usuario, estado_registro, num_contrato
+        num_cuenta_tc, tipo_cuenta, banco_emisor, id_grupo_cobro_externo,
+        inscripcion, aporte, observacion, estado, id_usuario, estado_registro, num_contrato
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-        $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, 'PENDIENTE', $26
+        $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, 'PENDIENTE', $27
       ) RETURNING *`,
       [
         datosPersistidos.tipo_benefactor,
@@ -550,8 +622,8 @@ const crearBenefactor = async (req, res) => {
         mes_prod,
         fecha_suscripcion, nombre_completo, cedula, nacionalidad, estado_civil,
         fecha_nacimiento, direccion, ciudad, provincia, telefono, email,
-        datosPersistidos.num_cuenta_tc, datosPersistidos.tipo_cuenta, datosPersistidos.banco_emisor, inscripcion, aporte,
-        observacion, estado, id_usuario, num_contrato,
+        datosPersistidos.num_cuenta_tc, datosPersistidos.tipo_cuenta, datosPersistidos.banco_emisor,
+        idGrupoCobroExternoNormalizado, inscripcion, aporte, observacion, estado, id_usuario, num_contrato,
       ]
     );
 
@@ -607,15 +679,46 @@ const actualizarBenefactor = async (req, res) => {
     }
 
     const tipoBenefactorActualResult = await client.query(
-      'SELECT tipo_benefactor FROM benefactores WHERE id_benefactor = $1',
+      'SELECT tipo_benefactor, id_grupo_cobro_externo FROM benefactores WHERE id_benefactor = $1',
       [id]
     );
     const tipoBenefactorEfectivo = req.body.tipo_benefactor !== undefined
       ? req.body.tipo_benefactor
       : tipoBenefactorActualResult.rows[0]?.tipo_benefactor;
+    const idGrupoCobroActual = tipoBenefactorActualResult.rows[0]?.id_grupo_cobro_externo ?? null;
+
+    const idGrupoCobroExternoNormalizado = req.body.id_grupo_cobro_externo === null
+      ? null
+      : (req.body.id_grupo_cobro_externo !== undefined && req.body.id_grupo_cobro_externo !== ''
+        ? Number(req.body.id_grupo_cobro_externo)
+        : undefined);
 
     if (tipoBenefactorEfectivo === 'DEPENDIENTE') {
+      const grupoEfectivo = idGrupoCobroExternoNormalizado !== undefined
+        ? idGrupoCobroExternoNormalizado
+        : idGrupoCobroActual;
+
+      if (grupoEfectivo) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: 'Un dependiente clasico no puede vincularse a un grupo externo',
+        });
+      }
       req.body = limpiarCamposBancariosDependiente(req.body);
+    } else if (idGrupoCobroExternoNormalizado !== undefined && idGrupoCobroExternoNormalizado !== null) {
+      const grupoValido = await obtenerGrupoCobroExternoValido(client, idGrupoCobroExternoNormalizado);
+      if (!grupoValido?.ok) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: grupoValido?.message || 'Grupo de cobro externo invalido',
+        });
+      }
+      req.body = limpiarCamposBancariosGrupoExterno(req.body);
+      req.body.id_grupo_cobro_externo = idGrupoCobroExternoNormalizado;
+    } else if (req.body.id_grupo_cobro_externo === null) {
+      req.body.id_grupo_cobro_externo = null;
     }
 
     // Construir query dinámicamente
@@ -628,7 +731,7 @@ const actualizarBenefactor = async (req, res) => {
       'fecha_suscripcion', 'nombre_completo', 'cedula', 'nacionalidad', 'estado_civil',
       'fecha_nacimiento', 'direccion', 'ciudad', 'provincia', 'telefono', 'email',
       'num_cuenta_tc', 'tipo_cuenta', 'banco_emisor', 'inscripcion', 'aporte',
-      'observacion', 'estado', 'corporacion',
+      'observacion', 'estado', 'corporacion', 'id_grupo_cobro_externo',
     ];
 
     for (const campo of camposPermitidos) {
@@ -1150,6 +1253,7 @@ const obtenerTodosTitulares = async (req, res) => {
         id_usuario
       FROM benefactores
       WHERE tipo_benefactor = 'TITULAR'
+        AND id_grupo_cobro_externo IS NULL
       ${alcanceSoloPropiosBenefactores(req) ? 'AND id_usuario = $1' : ''}
       ORDER BY nombre_completo ASC
     `;

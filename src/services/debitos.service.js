@@ -525,22 +525,49 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario, mesProvidi
           [dato.cod_tercero]
         );
 
+        let grupoMiembros = [];
+
         console.log(`[Import] benefactorResult.rows (${benefactorResult.rows.length}):`, JSON.stringify(benefactorResult.rows));
 
         if (benefactorResult.rows.length === 0) {
-          await client.query('RELEASE SAVEPOINT sp_fila');
-          errores.push({
-            fila: dato.fila_excel,
-            cod_tercero: dato.cod_tercero,
-            error: 'Benefactor no encontrado o no aprobado'
-          });
-          insertadosFallidos++;
-          continue;
+          const grupoResult = await client.query(
+            `
+              SELECT
+                g.id_grupo_cobro,
+                g.nombre_grupo,
+                g.n_convenio_cartera,
+                b.id_benefactor,
+                b.nombre_completo,
+                COALESCE(b.aporte, 0) AS aporte
+              FROM grupos_cobro_externo g
+              JOIN benefactores b
+                ON b.id_grupo_cobro_externo = g.id_grupo_cobro
+              WHERE g.activo = true
+                AND UPPER(TRIM(g.n_convenio_cartera)) = UPPER(TRIM($1))
+                AND b.estado_registro = 'APROBADO'
+                AND COALESCE(LOWER(b.estado), 'activo') IN ('activo', 'active')
+              ORDER BY b.nombre_completo ASC
+            `,
+            [dato.cod_tercero]
+          );
+
+          if (grupoResult.rows.length === 0) {
+            await client.query('RELEASE SAVEPOINT sp_fila');
+            errores.push({
+              fila: dato.fila_excel,
+              cod_tercero: dato.cod_tercero,
+              error: 'Benefactor o grupo externo no encontrado o no aprobado'
+            });
+            insertadosFallidos++;
+            continue;
+          }
+
+          grupoMiembros = grupoResult.rows;
         }
 
-        const benefactor = benefactorResult.rows[0];
+        const benefactor = benefactorResult.rows[0] || null;
 
-        if (benefactor.tipo_benefactor === 'DEPENDIENTE') {
+        if (benefactor && benefactor.tipo_benefactor === 'DEPENDIENTE') {
           await client.query('RELEASE SAVEPOINT sp_fila');
           errores.push({
             fila: dato.fila_excel,
@@ -558,8 +585,6 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario, mesProvidi
           continue;
         }
 
-        const idBenefactor = benefactor.id_benefactor;
-
         if (!dato.estado) {
           await client.query('RELEASE SAVEPOINT sp_fila');
           errores.push({
@@ -573,6 +598,91 @@ const importarExcelDebitos = async (buffer, nombreArchivo, idUsuario, mesProvidi
 
         // Evitar doble débito: si ya existe un cobro exitoso para este benefactor
         // en el mismo período (mismo criterio que la vista de cartera: SUM(valor_cobrado) >= aporte)
+        const objetivosCobro = grupoMiembros.length > 0
+          ? grupoMiembros.map((miembro) => ({
+              id_benefactor: miembro.id_benefactor,
+              nombre_completo: miembro.nombre_completo,
+              valor_cobrado: Number(miembro.aporte || 0),
+              observaciones: `Debito consolidado de grupo externo: ${miembro.nombre_grupo}`,
+            }))
+          : [{
+              id_benefactor: benefactor.id_benefactor,
+              nombre_completo: benefactor.nombre_completo,
+              valor_cobrado: dato.valor_cobrado,
+              observaciones: dato.observaciones,
+            }];
+
+        if (grupoMiembros.length > 0) {
+          const totalGrupo = grupoMiembros.reduce((acc, item) => acc + Number(item.aporte || 0), 0);
+
+          if (dato.estado === 'Proceso O.K.' && Number(dato.valor_cobrado || 0) < totalGrupo) {
+            await client.query('RELEASE SAVEPOINT sp_fila');
+            errores.push({
+              fila: dato.fila_excel,
+              cod_tercero: dato.cod_tercero,
+              error: `El debito del grupo externo no cubre el total esperado (${totalGrupo.toFixed(2)})`
+            });
+            insertadosFallidos++;
+            continue;
+          }
+
+          for (const objetivo of objetivosCobro) {
+            const cobroExistenteGrupo = await client.query(
+              `SELECT 1
+               FROM cobros c
+               JOIN benefactores b ON b.id_benefactor = c.id_benefactor
+               WHERE c.id_benefactor = $1
+                 AND c.estado = 'Proceso O.K.'
+                 AND EXTRACT(MONTH FROM c.fecha_transmision) = $2
+                 AND EXTRACT(YEAR FROM c.fecha_transmision) = $3
+               GROUP BY c.id_benefactor, b.aporte
+               HAVING b.aporte > 0 AND SUM(c.valor_cobrado) >= b.aporte
+               LIMIT 1`,
+              [objetivo.id_benefactor, mes, anio]
+            );
+
+            if (cobroExistenteGrupo.rows.length > 0) {
+              throw new Error(`Ya existe un debito aportado para ${objetivo.nombre_completo} en el periodo ${String(mes).padStart(2, '0')}/${anio}`);
+            }
+
+            await client.query(
+              `INSERT INTO cobros (
+                id_benefactor, fecha_transmision, fecha_pago, cod_tercero,
+                estado, estado_banco_raw, moneda, forma_pago, valor_cobrado,
+                empresa, tipo_movimiento, pais, banco, tipo_cuenta, num_cuenta,
+                observaciones, id_lote_importacion, fila_excel
+              ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+              )`,
+              [
+                objetivo.id_benefactor,
+                dato.fecha_transmision,
+                dato.fecha_pago,
+                dato.cod_tercero,
+                dato.estado,
+                dato.estado_raw,
+                dato.moneda,
+                dato.forma_pago,
+                objetivo.valor_cobrado,
+                'BANCO',
+                'Cobro',
+                'Ecuador',
+                dato.banco,
+                dato.tipo_cuenta,
+                dato.num_cuenta,
+                objetivo.observaciones,
+                idLote,
+                dato.fila_excel
+              ]
+            );
+          }
+
+          await client.query('RELEASE SAVEPOINT sp_fila');
+          insertadosExitosos += objetivosCobro.length;
+          continue;
+        }
+
+        const idBenefactor = objetivosCobro[0].id_benefactor;
         const cobroExistenteResult = await client.query(
           `SELECT 1
            FROM cobros c

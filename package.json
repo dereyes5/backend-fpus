@@ -9,6 +9,7 @@
     "init:passwords": "node scripts/init-passwords.js",
     "test:connection": "node scripts/test-connection.js",
     "diag:preview": "node scripts/diagnostico-validar-preview.js",
+    "preview:benefactores": "node scripts/preview-carga-benefactores.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
