@@ -76,31 +76,22 @@ const storageCaso = multer.diskStorage({
 
 const fileFilterCaso = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
-  if (file.fieldname === 'ficha_pdf') {
-    if (ext === '.pdf' && file.mimetype.toLowerCase().includes('pdf')) {
-      return cb(null, true);
-    }
-    return cb(new Error('La ficha social debe subirse en PDF'));
+  const mime = String(file.mimetype || '').toLowerCase();
+  const esPdf = ext === '.pdf' && mime.includes('pdf');
+  const esImagen = ['.jpg', '.jpeg', '.png'].includes(ext) && mime.startsWith('image/');
+
+  if (file.fieldname === 'documentos' && (esPdf || esImagen)) {
+    return cb(null, true);
   }
 
-  if (file.fieldname === 'firma') {
-    if (['.jpg', '.jpeg', '.png'].includes(ext)) {
-      return cb(null, true);
-    }
-    return cb(new Error('La firma debe ser una imagen JPG o PNG'));
-  }
-
-  return cb(new Error('Campo de archivo no permitido'));
+  return cb(new Error('Solo se permiten imagenes JPG, PNG o documentos PDF'));
 };
 
 const uploadCaso = multer({
   storage: storageCaso,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: fileFilterCaso
-}).fields([
-  { name: 'ficha_pdf', maxCount: 1 },
-  { name: 'firma', maxCount: 1 }
-]);
+}).array('documentos', 12);
 
 const normalizeUpperAsciiText = (value) => {
   if (value === null || value === undefined) return null;
@@ -153,12 +144,10 @@ async function crearCaso(req, res) {
 
     try {
       const idUsuarioCarga = req.usuario.id_usuario;
-      const files = req.files || {};
-      const fichaPdf = Array.isArray(files.ficha_pdf) ? files.ficha_pdf[0] : null;
-      const firma = Array.isArray(files.firma) ? files.firma[0] : null;
+      const documentosFiles = Array.isArray(req.files) ? req.files : [];
 
-      if (!fichaPdf) {
-        return res.status(400).json({ error: 'Debe adjuntar el PDF de la ficha social' });
+      if (documentosFiles.length === 0) {
+        return res.status(400).json({ error: 'Debe adjuntar al menos un documento del levantamiento social' });
       }
 
       const nombres = normalizeUpperAsciiText(req.body.nombres);
@@ -208,10 +197,11 @@ async function crearCaso(req, res) {
       };
 
       const archivos = {
-        ficha_pdf_nombre: fichaPdf.originalname,
-        ficha_pdf_ruta: fichaPdf.path.split('uploads/social/casos/')[1]?.replace(/\\/g, '/') || null,
-        firma_nombre: firma ? firma.originalname : null,
-        firma_ruta: firma ? (firma.path.split('uploads/social/casos/')[1]?.replace(/\\/g, '/') || null) : null,
+        documentos: documentosFiles.map((file) => ({
+          nombre_archivo: file.originalname,
+          ruta_archivo: file.path.split('uploads/social/casos/')[1]?.replace(/\\/g, '/') || null,
+          mime_type: file.mimetype,
+        })).filter((file) => file.ruta_archivo),
       };
 
       const beneficiario = await socialService.crearBeneficiarioSocial(payload, idUsuarioCarga, archivos);
@@ -247,7 +237,6 @@ async function obtenerCasos(req, res) {
     const filtros = {
       estado: req.query.estado,
       estado_registro: req.query.estado_registro,
-      prioridad: req.query.prioridad,
       ciudad: req.query.ciudad,
       tipo_caso: req.query.tipo_caso,
       id_usuario_carga: req.query.id_usuario_carga,

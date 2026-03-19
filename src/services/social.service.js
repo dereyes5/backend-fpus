@@ -1,5 +1,99 @@
 const pool = require('../config/database');
 
+const CAMPOS_CASO_SOCIAL_SELECT = `
+  bs.id_beneficiario_social,
+  bs.id_usuario_carga,
+  bs.nombre_completo,
+  bs.cedula,
+  bs.telefono,
+  bs.email,
+  bs.ciudad,
+  bs.provincia,
+  bs.tipo_caso,
+  bs.estado,
+  bs.descripcion_caso,
+  bs.fecha_inicio,
+  bs.fecha_cierre,
+  bs.estado_registro,
+  bs.observaciones,
+  bs.nombres,
+  bs.apellidos,
+  bs.sexo,
+  bs.edad,
+  bs.nacionalidad,
+  bs.estado_civil,
+  bs.tipo_sangre,
+  bs.direccion,
+  bs.fecha_nacimiento,
+  bs.pais,
+  bs.referencia,
+  bs.discapacidad,
+  bs.discapacidad_detalle,
+  bs.con_quien_vive,
+  bs.con_quien_vive_detalle,
+  bs.situacion_vivienda,
+  bs.salud_estado_general,
+  bs.enfermedad_catastrofica,
+  bs.toma_medicacion_constante,
+  bs.alergia_medicamentos,
+  bs.alergia_medicamentos_detalle,
+  bs.nutricion_num_comidas,
+  bs.nutricion_desayuno,
+  bs.nutricion_almuerzo,
+  bs.nutricion_merienda,
+  bs.nutricion_consume_frutas,
+  bs.recursos_economicos,
+  bs.red_social_apoyo,
+  bs.latitud,
+  bs.longitud,
+  bs.se_siente_acompanado,
+  bs.perdida_familiar_reciente,
+  bs.perdida_familiar_detalle,
+  bs.observaciones_conclusiones,
+  bs.fecha_generacion_ficha,
+  bs.fecha_registro,
+  bs.fecha_actualizacion,
+  u.nombre_usuario AS nombre_usuario_carga,
+  COUNT(DISTINCT s.id_seguimiento) AS total_seguimientos,
+  COUNT(DISTINCT f.id_foto) AS total_fotos,
+  MAX(s.fecha_evento) AS ultima_actividad,
+  COALESCE(
+    (
+      SELECT json_agg(
+        json_build_object(
+          'id_relacion_familiar', rf.id_relacion_familiar,
+          'orden', rf.orden,
+          'nombre_familiar', rf.nombre_familiar,
+          'forma_convivencia', rf.forma_convivencia,
+          'edad', rf.edad,
+          'cedula', rf.cedula,
+          'telefono', rf.telefono
+        ) ORDER BY rf.orden
+      )
+      FROM social_relaciones_familiares rf
+      WHERE rf.id_beneficiario_social = bs.id_beneficiario_social
+    ),
+    '[]'::json
+  ) AS relaciones_familiares,
+  COALESCE(
+    (
+      SELECT json_agg(
+        json_build_object(
+          'id_documento', d.id_documento,
+          'nombre_archivo', d.nombre_archivo,
+          'ruta_archivo', d.ruta_archivo,
+          'mime_type', d.mime_type,
+          'tipo_documento', d.tipo_documento,
+          'fecha_subida', d.fecha_subida
+        ) ORDER BY d.fecha_subida DESC
+      )
+      FROM documentos_beneficiario_social d
+      WHERE d.id_beneficiario_social = bs.id_beneficiario_social
+    ),
+    '[]'::json
+  ) AS documentos
+`;
+
 /**
  * Servicio para gestión de casos sociales
  */
@@ -20,7 +114,7 @@ async function crearBeneficiarioSocial(data, idUsuarioCarga, archivos = {}) {
     const query = `
       INSERT INTO beneficiarios_sociales (
         nombre_completo, cedula, telefono, email,
-        direccion, ciudad, provincia, tipo_caso, prioridad, estado,
+        direccion, ciudad, provincia, tipo_caso, estado,
         descripcion_caso, id_usuario_carga, fecha_inicio, observaciones,
         nombres, apellidos, sexo, edad, nacionalidad, estado_civil, tipo_sangre,
         fecha_nacimiento, pais, referencia, discapacidad, discapacidad_detalle,
@@ -31,16 +125,14 @@ async function crearBeneficiarioSocial(data, idUsuarioCarga, archivos = {}) {
         nutricion_merienda, nutricion_consume_frutas,
         recursos_economicos, red_social_apoyo, latitud, longitud,
         se_siente_acompanado, perdida_familiar_reciente, perdida_familiar_detalle,
-        observaciones_conclusiones, fecha_generacion_ficha,
-        ficha_pdf_nombre, ficha_pdf_ruta, firma_nombre, firma_ruta
+        observaciones_conclusiones, fecha_generacion_ficha
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, $18,
-        $19, $20, $21, $22, $23, $24, $25, $26,
-        $27, $28, $29, $30, $31, $32, $33, $34,
-        $35, $36, $37, $38, $39, $40, $41, $42,
-        $43, $44, $45, $46, $47, $48, $49, $50,
-        $51, $52, $53
+        $1, $2, $3, $4, $5, $6, $7, $8, $9,
+        $10, $11, $12, $13, $14, $15, $16, $17,
+        $18, $19, $20, $21, $22, $23, $24, $25,
+        $26, $27, $28, $29, $30, $31, $32, $33,
+        $34, $35, $36, $37, $38, $39, $40, $41,
+        $42, $43, $44, $45, $46, $47, $48
       )
       RETURNING *
     `;
@@ -54,7 +146,6 @@ async function crearBeneficiarioSocial(data, idUsuarioCarga, archivos = {}) {
       data.ciudad || null,
       data.provincia || null,
       data.tipo_caso,
-      data.prioridad,
       data.estado || 'Activo',
       data.descripcion_caso,
       idUsuarioCarga,
@@ -99,12 +190,7 @@ async function crearBeneficiarioSocial(data, idUsuarioCarga, archivos = {}) {
       data.perdida_familiar_reciente,
       data.perdida_familiar_detalle || null,
       data.observaciones_conclusiones || null,
-      data.fecha_generacion_ficha || null,
-
-      archivos.ficha_pdf_nombre || null,
-      archivos.ficha_pdf_ruta || null,
-      archivos.firma_nombre || null,
-      archivos.firma_ruta || null
+      data.fecha_generacion_ficha || null
     ];
 
     const result = await client.query(query, values);
@@ -132,9 +218,30 @@ async function crearBeneficiarioSocial(data, idUsuarioCarga, archivos = {}) {
       }
     }
 
-    await client.query('COMMIT');
+    if (Array.isArray(archivos.documentos) && archivos.documentos.length > 0) {
+      for (const documento of archivos.documentos) {
+        await client.query(
+          `INSERT INTO documentos_beneficiario_social (
+            id_beneficiario_social,
+            nombre_archivo,
+            ruta_archivo,
+            mime_type,
+            tipo_documento,
+            id_usuario
+          ) VALUES ($1, $2, $3, $4, 'LEVANTAMIENTO', $5)`,
+          [
+            beneficiario.id_beneficiario_social,
+            documento.nombre_archivo,
+            documento.ruta_archivo,
+            documento.mime_type || null,
+            idUsuarioCarga,
+          ]
+        );
+      }
+    }
 
-    return beneficiario;
+    await client.query('COMMIT');
+    return obtenerBeneficiarioSocialPorId(beneficiario.id_beneficiario_social);
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -148,7 +255,12 @@ async function crearBeneficiarioSocial(data, idUsuarioCarga, archivos = {}) {
  */
 async function obtenerBeneficiariosSociales(filtros = {}) {
   let query = `
-    SELECT * FROM vista_casos_sociales_completa
+    SELECT
+      ${CAMPOS_CASO_SOCIAL_SELECT}
+    FROM beneficiarios_sociales bs
+    JOIN usuarios u ON u.id_usuario = bs.id_usuario_carga
+    LEFT JOIN seguimiento_social s ON s.id_beneficiario_social = bs.id_beneficiario_social
+    LEFT JOIN fotos_seguimiento f ON f.id_seguimiento = s.id_seguimiento
     WHERE 1=1
   `;
 
@@ -157,54 +269,47 @@ async function obtenerBeneficiariosSociales(filtros = {}) {
 
   // Filtro por estado
   if (filtros.estado) {
-    query += ` AND estado = $${paramCount}`;
+    query += ` AND bs.estado = $${paramCount}`;
     values.push(filtros.estado);
     paramCount++;
   }
 
   // Filtro por estado de registro
   if (filtros.estado_registro) {
-    query += ` AND estado_registro = $${paramCount}`;
+    query += ` AND bs.estado_registro = $${paramCount}`;
     values.push(filtros.estado_registro);
-    paramCount++;
-  }
-
-  // Filtro por prioridad
-  if (filtros.prioridad) {
-    query += ` AND prioridad = $${paramCount}`;
-    values.push(filtros.prioridad);
     paramCount++;
   }
 
   // Filtro por ciudad
   if (filtros.ciudad) {
-    query += ` AND ciudad ILIKE $${paramCount}`;
+    query += ` AND bs.ciudad ILIKE $${paramCount}`;
     values.push(`%${filtros.ciudad}%`);
     paramCount++;
   }
 
   // Filtro por tipo de caso
   if (filtros.tipo_caso) {
-    query += ` AND tipo_caso = $${paramCount}`;
+    query += ` AND bs.tipo_caso = $${paramCount}`;
     values.push(filtros.tipo_caso);
     paramCount++;
   }
 
   // Filtro por trabajadora social
   if (filtros.id_usuario_carga) {
-    query += ` AND id_usuario_carga = $${paramCount}`;
+    query += ` AND bs.id_usuario_carga = $${paramCount}`;
     values.push(filtros.id_usuario_carga);
     paramCount++;
   }
 
   // Búsqueda por nombre o cédula
   if (filtros.busqueda) {
-    query += ` AND (nombre_completo ILIKE $${paramCount} OR cedula ILIKE $${paramCount})`;
+    query += ` AND (bs.nombre_completo ILIKE $${paramCount} OR bs.cedula ILIKE $${paramCount})`;
     values.push(`%${filtros.busqueda}%`);
     paramCount++;
   }
 
-  query += ` ORDER BY fecha_registro DESC`;
+  query += ` GROUP BY bs.id_beneficiario_social, u.nombre_usuario ORDER BY bs.fecha_registro DESC`;
 
   const result = await pool.query(query, values);
   return result.rows;
@@ -215,8 +320,14 @@ async function obtenerBeneficiariosSociales(filtros = {}) {
  */
 async function obtenerBeneficiarioSocialPorId(id) {
   const query = `
-    SELECT * FROM vista_casos_sociales_completa
-    WHERE id_beneficiario_social = $1
+    SELECT
+      ${CAMPOS_CASO_SOCIAL_SELECT}
+    FROM beneficiarios_sociales bs
+    JOIN usuarios u ON u.id_usuario = bs.id_usuario_carga
+    LEFT JOIN seguimiento_social s ON s.id_beneficiario_social = bs.id_beneficiario_social
+    LEFT JOIN fotos_seguimiento f ON f.id_seguimiento = s.id_seguimiento
+    WHERE bs.id_beneficiario_social = $1
+    GROUP BY bs.id_beneficiario_social, u.nombre_usuario
   `;
 
   const result = await pool.query(query, [id]);
@@ -291,7 +402,7 @@ async function actualizarBeneficiarioSocial(id, data) {
 
     const camposActualizables = [
       'nombre_completo', 'cedula', 'telefono', 'email', 'direccion',
-      'ciudad', 'provincia', 'tipo_caso', 'prioridad', 'estado',
+      'ciudad', 'provincia', 'tipo_caso', 'estado',
       'descripcion_caso', 'fecha_inicio', 'fecha_cierre', 'observaciones'
     ];
 
@@ -324,7 +435,7 @@ async function actualizarBeneficiarioSocial(id, data) {
 
     await client.query('COMMIT');
 
-    return result.rows[0];
+    return obtenerBeneficiarioSocialPorId(id);
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -562,9 +673,6 @@ async function obtenerEstadisticas(filtros = {}) {
       COUNT(*) FILTER (WHERE estado = 'Activo') AS casos_activos,
       COUNT(*) FILTER (WHERE estado = 'En seguimiento') AS casos_en_seguimiento,
       COUNT(*) FILTER (WHERE estado = 'Cerrado') AS casos_cerrados,
-      COUNT(*) FILTER (WHERE prioridad = 'Alta') AS prioridad_alta,
-      COUNT(*) FILTER (WHERE prioridad = 'Media') AS prioridad_media,
-      COUNT(*) FILTER (WHERE prioridad = 'Baja') AS prioridad_baja,
       COUNT(*) FILTER (WHERE estado_registro = 'PENDIENTE') AS pendientes_aprobacion,
       COUNT(*) FILTER (WHERE estado_registro = 'APROBADO') AS aprobados,
       COUNT(*) FILTER (WHERE estado_registro = 'RECHAZADO') AS rechazados,
@@ -604,9 +712,15 @@ async function obtenerEstadisticas(filtros = {}) {
  */
 async function obtenerCasosPendientes() {
   const query = `
-    SELECT * FROM vista_casos_sociales_completa
-    WHERE estado_registro = 'PENDIENTE'
-    ORDER BY fecha_registro ASC
+    SELECT
+      ${CAMPOS_CASO_SOCIAL_SELECT}
+    FROM beneficiarios_sociales bs
+    JOIN usuarios u ON u.id_usuario = bs.id_usuario_carga
+    LEFT JOIN seguimiento_social s ON s.id_beneficiario_social = bs.id_beneficiario_social
+    LEFT JOIN fotos_seguimiento f ON f.id_seguimiento = s.id_seguimiento
+    WHERE bs.estado_registro = 'PENDIENTE'
+    GROUP BY bs.id_beneficiario_social, u.nombre_usuario
+    ORDER BY bs.fecha_registro ASC
   `;
 
   const result = await pool.query(query);
