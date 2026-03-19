@@ -606,15 +606,35 @@ const cambiarEstadoUsuario = async (req, res) => {
       });
     }
 
-    const result = await client.query(
-      `UPDATE usuarios
-       SET activo = $1,
-           fecha_inactivacion = CASE WHEN $1 = false THEN NOW() ELSE NULL END,
-           id_usuario_inactiva = CASE WHEN $1 = false THEN $2 ELSE NULL END
-       WHERE id_usuario = $3
-       RETURNING id_usuario, nombre_usuario, cargo, activo, fecha_inactivacion, id_usuario_inactiva`,
-      [activo, idUsuarioAdmin, idUsuarioObjetivo]
-    );
+    let result;
+    try {
+      result = await client.query(
+        `UPDATE usuarios
+         SET activo = $1,
+             fecha_inactivacion = CASE WHEN $1 = false THEN NOW() ELSE NULL END,
+             id_usuario_inactiva = CASE WHEN $1 = false THEN $2 ELSE NULL END
+         WHERE id_usuario = $3
+         RETURNING id_usuario, nombre_usuario, cargo, activo, fecha_inactivacion, id_usuario_inactiva`,
+        [activo, idUsuarioAdmin, idUsuarioObjetivo]
+      );
+    } catch (dbError) {
+      if (dbError && (dbError.code === '42703' || /id_usuario_inactiva|fecha_inactivacion/i.test(dbError.message))) {
+        result = await client.query(
+          `UPDATE usuarios
+           SET activo = $1
+           WHERE id_usuario = $2
+           RETURNING id_usuario, nombre_usuario, cargo, activo`,
+          [activo, idUsuarioObjetivo]
+        );
+        result.rows = result.rows.map((row) => ({
+          ...row,
+          fecha_inactivacion: null,
+          id_usuario_inactiva: null,
+        }));
+      } else {
+        throw dbError;
+      }
+    }
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
