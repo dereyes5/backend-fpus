@@ -223,18 +223,31 @@ async function notificarPorPermiso(recurso, permiso, titulo, mensaje, link = nul
   
   try {
     await client.query('BEGIN');
-    
-    // Obtener usuarios con el permiso especificado
+
+    const permisoMap = {
+      benefactores: {
+        aprobar: 'aprobaciones',
+      },
+      social: {
+        aprobar: 'aprobaciones_social',
+      },
+    };
+
+    const columnaPermiso = permisoMap[recurso]?.[permiso];
+
+    if (!columnaPermiso) {
+      throw new Error('Permiso no soportado por el sistema actual');
+    }
+
     const queryUsuarios = `
       SELECT DISTINCT u.id_usuario, u.nombre_usuario
       FROM usuarios u
-      JOIN permisos_usuarios pu ON pu.id_usuario = u.id_usuario
-      WHERE pu.recurso = $1 
-        AND pu.permiso = $2
-        AND u.activo = TRUE
+      JOIN permisos_usuario p ON p.id_usuario = u.id_usuario
+      WHERE u.activo = TRUE
+        AND COALESCE(p.${columnaPermiso}, FALSE) = TRUE
     `;
     
-    const resultUsuarios = await pool.query(queryUsuarios, [recurso, permiso]);
+    const resultUsuarios = await client.query(queryUsuarios);
     
     const notificacionesCreadas = [];
     
@@ -341,8 +354,9 @@ async function notificarCasosPendientes(tipoCaso = 'benefactores') {
     const queryUsuarios = `
       SELECT DISTINCT u.id_usuario
       FROM usuarios u
-      JOIN roles_usuarios ru ON ru.id_usuario = u.id_usuario
-      JOIN roles r ON r.id_rol = ru.id_rol
+      JOIN permisos_usuario p ON p.id_usuario = u.id_usuario
+      WHERE u.activo = TRUE
+        AND COALESCE(p.${permisoRequerido}, FALSE) = TRUE
     `;
     
     const resultUsuarios = await client.query(queryUsuarios);

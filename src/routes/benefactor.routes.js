@@ -8,35 +8,38 @@ const { verificarToken, verificarCualquierPermiso } = require('../middleware/aut
 const { validarResultado } = require('../middleware/validator.middleware');
 const { createBenefactorDto, updateBenefactorDto, asignarDependienteDto } = require('../dtos/benefactor.dto');
 
-// Configuración de multer para almacenar PDFs
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, '../../uploads/contratos');
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
+const createPdfUpload = (subdir, prefix) => {
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadPath = path.join(__dirname, `../../uploads/${subdir}`);
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+      cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+      const benefactorId = req.params.id;
+      const ext = path.extname(file.originalname);
+      cb(null, `${prefix}-${benefactorId}${ext}`);
     }
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const benefactorId = req.params.id;
-    const ext = path.extname(file.originalname);
-    cb(null, `contrato-${benefactorId}${ext}`);
-  }
-});
+  });
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB máximo
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf') {
-      cb(null, true);
-    } else {
-      cb(new Error('Solo se permiten archivos PDF'));
+  return multer({
+    storage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (file.mimetype === 'application/pdf') {
+        cb(null, true);
+      } else {
+        cb(new Error('Solo se permiten archivos PDF'));
+      }
     }
-  }
-});
+  });
+};
 
-// Todas las rutas de benefactores requieren autenticación
+const uploadContrato = createPdfUpload('contratos', 'contrato');
+const uploadCancelacion = createPdfUpload('cancelaciones', 'cancelacion');
+
 router.use(verificarToken);
 
 const verificarAccesoBenefactores = verificarCualquierPermiso([
@@ -44,7 +47,6 @@ const verificarAccesoBenefactores = verificarCualquierPermiso([
   'benefactores_administrar',
 ]);
 
-// Ruta para obtener todos los titulares (debe ir antes de /:id)
 router.get('/titulares', verificarAccesoBenefactores, benefactorController.obtenerTodosTitulares);
 router.get('/corporaciones/sugerencias', verificarAccesoBenefactores, benefactorController.obtenerSugerenciasCorporacion);
 router.get('/convenio/siguiente', verificarAccesoBenefactores, benefactorController.obtenerSiguienteConvenio);
@@ -55,13 +57,14 @@ router.post('/', verificarAccesoBenefactores, createBenefactorDto, validarResult
 router.put('/:id', verificarAccesoBenefactores, updateBenefactorDto, validarResultado, benefactorController.actualizarBenefactor);
 router.delete('/:id', verificarAccesoBenefactores, benefactorController.eliminarBenefactor);
 
-// Rutas de dependientes
 router.post('/asignar-dependiente', verificarAccesoBenefactores, asignarDependienteDto, validarResultado, benefactorController.asignarDependiente);
 router.get('/:id/dependientes', verificarAccesoBenefactores, benefactorController.obtenerDependientes);
 
-// Rutas para contratos PDF
-router.post('/:id/contrato', verificarAccesoBenefactores, upload.single('contrato'), benefactorController.subirContrato);
+router.post('/:id/contrato', verificarAccesoBenefactores, uploadContrato.single('contrato'), benefactorController.subirContrato);
 router.get('/:id/contrato', verificarAccesoBenefactores, benefactorController.obtenerContrato);
 router.delete('/:id/contrato', verificarAccesoBenefactores, benefactorController.eliminarContrato);
+
+router.post('/:id/cancelacion', verificarAccesoBenefactores, uploadCancelacion.single('cancelacion'), benefactorController.subirCancelacion);
+router.get('/:id/cancelacion', verificarAccesoBenefactores, benefactorController.obtenerCancelacion);
 
 module.exports = router;

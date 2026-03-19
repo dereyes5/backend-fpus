@@ -1082,7 +1082,7 @@ const subirContrato = async (req, res) => {
     }
 
     const benefactorResult = await pool.query(
-      'SELECT id_benefactor FROM benefactores WHERE id_benefactor = $1',
+      'SELECT id_benefactor, estado_registro FROM benefactores WHERE id_benefactor = $1',
       [id]
     );
 
@@ -1091,6 +1091,21 @@ const subirContrato = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Benefactor no encontrado',
+      });
+    }
+
+    const archivoContratoExistente = obtenerArchivoPdfBenefactor('contratos', 'contrato', id);
+    const errorDocumento = validarInmutabilidadDocumento(
+      benefactorResult.rows[0],
+      'contrato',
+      Boolean(archivoContratoExistente)
+    );
+
+    if (errorDocumento) {
+      fs.unlinkSync(req.file.path);
+      return res.status(409).json({
+        success: false,
+        message: errorDocumento,
       });
     }
 
@@ -1133,6 +1148,26 @@ const obtenerContrato = async (req, res) => {
         return res.status(acceso.status).json({
           success: false,
           message: acceso.message,
+        });
+      }
+
+      const benefactorResult = await client.query(
+        'SELECT id_benefactor, estado_registro FROM benefactores WHERE id_benefactor = $1',
+        [id]
+      );
+
+      if (benefactorResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Benefactor no encontrado',
+        });
+      }
+
+      const errorDocumento = validarInmutabilidadDocumento(benefactorResult.rows[0], 'contrato', true);
+      if (errorDocumento) {
+        return res.status(409).json({
+          success: false,
+          message: errorDocumento,
         });
       }
     } finally {
@@ -1284,6 +1319,178 @@ const obtenerTodosTitulares = async (req, res) => {
   }
 };
 
+const obtenerArchivoPdfBenefactor = (subcarpeta, prefijo, idBenefactor) => {
+  const uploadPath = path.join(__dirname, `../../uploads/${subcarpeta}`);
+  if (!fs.existsSync(uploadPath)) {
+    return null;
+  }
+
+  const archivos = fs.readdirSync(uploadPath);
+  const archivo = archivos.find((file) => file.startsWith(`${prefijo}-${idBenefactor}`));
+
+  if (!archivo) {
+    return null;
+  }
+
+  return {
+    uploadPath,
+    archivo,
+    filePath: path.join(uploadPath, archivo),
+  };
+};
+
+const validarInmutabilidadDocumento = (benefactor, tipoDocumento, yaExisteDocumento) => {
+  if (!benefactor) {
+    return null;
+  }
+
+  if (tipoDocumento === 'contrato' && benefactor.estado_registro === 'APROBADO') {
+    return 'El PDF del contrato no puede modificarse una vez que el benefactor ha sido aprobado';
+  }
+
+  if (tipoDocumento === 'cancelacion' && yaExisteDocumento) {
+    return 'El PDF de cancelacion ya fue registrado y no puede reemplazarse';
+  }
+
+  return null;
+};
+
+const subirCancelacion = async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const { id } = req.params;
+
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debe subir obligatoriamente el PDF de cancelacion',
+      });
+    }
+
+    await client.query('BEGIN');
+
+    const acceso = await verificarAccesoBenefactor(client, id, req);
+    if (!acceso.ok) {
+      fs.unlinkSync(req.file.path);
+      await client.query('ROLLBACK');
+      return res.status(acceso.status).json({
+        success: false,
+        message: acceso.message,
+      });
+    }
+
+    const benefactorResult = await client.query(
+      `SELECT id_benefactor, estado, estado_registro
+       FROM benefactores
+       WHERE id_benefactor = $1`,
+      [id]
+    );
+
+    const benefactor = benefactorResult.rows[0];
+    const archivoCancelacionExistente = obtenerArchivoPdfBenefactor('cancelaciones', 'cancelacion', id);
+    const errorDocumento = validarInmutabilidadDocumento(benefactor, 'cancelacion', Boolean(archivoCancelacionExistente));
+
+    if (errorDocumento) {
+      fs.unlinkSync(req.file.path);
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        message: errorDocumento,
+      });
+    }
+
+    await client.query(
+      `UPDATE benefactores
+       SET estado = 'CANCELADO'
+       WHERE id_benefactor = $1`,
+      [id]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      success: true,
+      message: 'Benefactor cancelado exitosamente',
+      data: {
+        filename: req.file.filename,
+        path: `/api/benefactores/${id}/cancelacion`,
+        estado: 'CANCELADO',
+      },
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al subir cancelacion:', error);
+    if (req.file) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({
+      success: false,
+      message: 'Error al subir el PDF de cancelacion',
+      error: error.message,
+    });
+  } finally {
+    client.release();
+  }
+};
+
+const obtenerCancelacion = async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const { id } = req.params;
+    const { verificar } = req.query;
+
+    if (!puedeIngresarBenefactores(req)) {
+      return responderSinPermisoBenefactores(res);
+    }
+
+    const acceso = await verificarAccesoBenefactor(client, id, req);
+    if (!acceso.ok) {
+      return res.status(acceso.status).json({
+        success: false,
+        message: acceso.message,
+      });
+    }
+
+    const archivoCancelacion = obtenerArchivoPdfBenefactor('cancelaciones', 'cancelacion', id);
+
+    if (!archivoCancelacion) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontro el PDF de cancelacion para este benefactor',
+      });
+    }
+
+    if (verificar === 'true') {
+      return res.json({
+        success: true,
+        data: {
+          existe: true,
+          filename: archivoCancelacion.archivo,
+        },
+      });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${archivoCancelacion.archivo}"`);
+    res.sendFile(archivoCancelacion.filePath);
+  } catch (error) {
+    console.error('Error al obtener cancelacion:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener el PDF de cancelacion',
+      error: error.message,
+    });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   obtenerBenefactores,
   obtenerSugerenciasCorporacion,
@@ -1298,4 +1505,6 @@ module.exports = {
   subirContrato,
   obtenerContrato,
   eliminarContrato,
+  subirCancelacion,
+  obtenerCancelacion,
 };
