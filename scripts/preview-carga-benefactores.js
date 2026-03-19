@@ -243,7 +243,7 @@ function writeCsv(filePath, rows) {
 
 const HEADER_ALIASES = new Map([
   ['TIPO DE AFILIACION', 'tipo_afiliacion'],
-  ['CUENTA', 'tipo_benefactor'],
+  ['CUENTA', 'cuenta_excel_aux'],
   ['EJECUTIVO', 'ejecutivo'],
   ['N CONVENIO', 'n_convenio'],
   ['MES PROD', 'mes_prod'],
@@ -273,6 +273,18 @@ const HEADER_ALIASES = new Map([
   ['AÑO2', 'anio2'],
   ['ESTADO', 'estado'],
 ]);
+
+function resolveTipoBenefactor(rawRow) {
+  const nombreCompleto = normalizeUpperNullableString(rawRow.nombre_completo);
+  const titularNombreExcel = normalizeUpperNullableString(rawRow.titular_nombre_excel);
+  const fallback = normalizeUpperNullableString(rawRow.tipo_benefactor);
+
+  if (nombreCompleto && titularNombreExcel) {
+    return nombreCompleto === titularNombreExcel ? 'TITULAR' : 'DEPENDIENTE';
+  }
+
+  return fallback;
+}
 
 function mapRowKeys(rawRow) {
   const mapped = {};
@@ -328,10 +340,6 @@ function buildWarningsAndErrors(row) {
     }
   }
 
-  if (row.tipo_benefactor === 'TITULAR' && row.num_cuenta_tc && !row.cuenta_bancaria) {
-    warnings.push('excel_solo_trae_n_cuenta_t_c_y_no_cuenta_bancaria_separada');
-  }
-
   if (row.fecha_nacimiento_raw && !row.fecha_nacimiento) {
     warnings.push('fecha_nacimiento_invalida');
   }
@@ -374,7 +382,6 @@ function buildPayload(row) {
 
   if (row.tipo_benefactor === 'TITULAR') {
     payload.cuenta = row.cuenta_bancaria || undefined;
-    payload.num_cuenta_tc = row.num_cuenta_tc || undefined;
     payload.tipo_cuenta = row.tipo_cuenta || undefined;
     payload.banco_emisor = row.banco_emisor || undefined;
   }
@@ -383,9 +390,11 @@ function buildPayload(row) {
 }
 
 function sanitizeForPayload(rawRow, rowNumber) {
-  const tipoBenefactor = normalizeUpperNullableString(rawRow.tipo_benefactor);
+  const tipoBenefactor = resolveTipoBenefactor(rawRow);
   const tipoAfiliacion = normalizeUpperNullableString(rawRow.tipo_afiliacion);
-  const cuentaBancaria = normalizeNullableString(rawRow.cuenta_bancaria);
+  const cuentaBancaria =
+    normalizeNullableString(rawRow.cuenta_bancaria) ||
+    normalizeNullableString(rawRow.num_cuenta_tc);
 
   const row = {
     row_number: rowNumber,
@@ -413,6 +422,7 @@ function sanitizeForPayload(rawRow, rowNumber) {
     banco_emisor: normalizeUpperNullableString(rawRow.banco_emisor),
     titular_nombre_excel: normalizeUpperNullableString(rawRow.titular_nombre_excel),
     titular_cedula_excel: normalizeCedula(rawRow.titular_cedula_excel),
+    cuenta_excel_aux: normalizeUpperNullableString(rawRow.cuenta_excel_aux),
     inscripcion: normalizeCurrency(rawRow.inscripcion),
     aporte: normalizeCurrency(rawRow.aporte),
     observacion: normalizeNullableString(rawRow.observacion),
