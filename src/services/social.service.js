@@ -448,7 +448,7 @@ async function actualizarBeneficiarioSocial(id, data) {
  * Cambiar estado del caso
  */
 async function cambiarEstadoCaso(id, nuevoEstado, observaciones = null) {
-  const estadosValidos = ['Activo', 'En seguimiento', 'Cerrado'];
+  const estadosValidos = ['Activo', 'Cerrado'];
 
   if (!estadosValidos.includes(nuevoEstado)) {
     throw new Error('Estado no válido');
@@ -671,7 +671,7 @@ async function obtenerEstadisticas(filtros = {}) {
   const query = `
     SELECT
       COUNT(*) FILTER (WHERE estado = 'Activo') AS casos_activos,
-      COUNT(*) FILTER (WHERE estado = 'En seguimiento') AS casos_en_seguimiento,
+      0 AS casos_en_seguimiento,
       COUNT(*) FILTER (WHERE estado = 'Cerrado') AS casos_cerrados,
       COUNT(*) FILTER (WHERE estado_registro = 'PENDIENTE') AS pendientes_aprobacion,
       COUNT(*) FILTER (WHERE estado_registro = 'APROBADO') AS aprobados,
