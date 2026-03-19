@@ -1,7 +1,7 @@
 const pool = require('../config/database');
 
 /**
- * Servicio para gestión de notificaciones
+ * Servicio para gestion de notificaciones
  */
 
 // ==========================================
@@ -9,22 +9,21 @@ const pool = require('../config/database');
 // ==========================================
 
 /**
- * Crear notificación
+ * Crear notificacion
  */
 async function crearNotificacion(idUsuario, tipo, titulo, mensaje, link = null) {
   const query = `
     SELECT crear_notificacion($1, $2, $3, $4, $5) AS id_notificacion
   `;
-  
+
   const result = await pool.query(query, [idUsuario, tipo, titulo, mensaje, link]);
-  
-  // Obtener la notificación completa
+
   const queryNotificacion = `
     SELECT * FROM notificaciones WHERE id_notificacion = $1
   `;
-  
+
   const resultNotificacion = await pool.query(queryNotificacion, [result.rows[0].id_notificacion]);
-  
+
   return resultNotificacion.rows[0];
 }
 
@@ -33,7 +32,7 @@ async function crearNotificacion(idUsuario, tipo, titulo, mensaje, link = null) 
  */
 async function obtenerNotificaciones(idUsuario, soloNoLeidas = false) {
   let query = `
-    SELECT 
+    SELECT
       id_notificacion,
       tipo,
       titulo,
@@ -45,19 +44,19 @@ async function obtenerNotificaciones(idUsuario, soloNoLeidas = false) {
     FROM notificaciones
     WHERE id_usuario = $1
   `;
-  
+
   if (soloNoLeidas) {
-    query += ` AND leida = FALSE`;
+    query += ' AND leida = FALSE';
   }
-  
-  query += ` ORDER BY fecha_creacion DESC LIMIT 50`;
-  
+
+  query += ' ORDER BY fecha_creacion DESC LIMIT 50';
+
   const result = await pool.query(query, [idUsuario]);
   return result.rows;
 }
 
 /**
- * Contar notificaciones no leídas
+ * Contar notificaciones no leidas
  */
 async function contarNoLeidas(idUsuario) {
   const query = `
@@ -65,13 +64,13 @@ async function contarNoLeidas(idUsuario) {
     FROM notificaciones
     WHERE id_usuario = $1 AND leida = FALSE
   `;
-  
+
   const result = await pool.query(query, [idUsuario]);
-  return parseInt(result.rows[0].total);
+  return parseInt(result.rows[0].total, 10);
 }
 
 /**
- * Marcar notificación como leída
+ * Marcar notificacion como leida
  */
 async function marcarComoLeida(idNotificacion, idUsuario) {
   const query = `
@@ -80,18 +79,18 @@ async function marcarComoLeida(idNotificacion, idUsuario) {
     WHERE id_notificacion = $1 AND id_usuario = $2
     RETURNING *
   `;
-  
+
   const result = await pool.query(query, [idNotificacion, idUsuario]);
-  
+
   if (result.rows.length === 0) {
-    throw new Error('Notificación no encontrada');
+    throw new Error('Notificacion no encontrada');
   }
-  
+
   return result.rows[0];
 }
 
 /**
- * Marcar todas las notificaciones como leídas
+ * Marcar todas las notificaciones como leidas
  */
 async function marcarTodasComoLeidas(idUsuario) {
   const query = `
@@ -100,17 +99,17 @@ async function marcarTodasComoLeidas(idUsuario) {
     WHERE id_usuario = $1 AND leida = FALSE
     RETURNING COUNT(*) AS total
   `;
-  
+
   const result = await pool.query(query, [idUsuario]);
-  
+
   return {
-    mensaje: 'Todas las notificaciones han sido marcadas como leídas',
-    total_actualizadas: result.rowCount
+    mensaje: 'Todas las notificaciones han sido marcadas como leidas',
+    total_actualizadas: result.rowCount,
   };
 }
 
 /**
- * Eliminar notificación
+ * Eliminar notificacion
  */
 async function eliminarNotificacion(idNotificacion, idUsuario) {
   const query = `
@@ -118,45 +117,44 @@ async function eliminarNotificacion(idNotificacion, idUsuario) {
     WHERE id_notificacion = $1 AND id_usuario = $2
     RETURNING *
   `;
-  
+
   const result = await pool.query(query, [idNotificacion, idUsuario]);
-  
+
   if (result.rows.length === 0) {
-    throw new Error('Notificación no encontrada');
+    throw new Error('Notificacion no encontrada');
   }
-  
+
   return result.rows[0];
 }
 
 // ==========================================
-// 2. NOTIFICACIONES AUTOMÁTICAS
+// 2. NOTIFICACIONES AUTOMATICAS
 // ==========================================
 
 /**
  * Generar notificaciones de cumpleaños
- * Debe ejecutarse diariamente vía CRON
+ * Debe ejecutarse diariamente via CRON
  */
 async function generarNotificacionesCumpleanos() {
   const query = `
     SELECT * FROM generar_notificaciones_cumpleanos()
   `;
-  
+
   const result = await pool.query(query);
   return result.rows[0];
 }
 
 /**
- * Crear notificación de aprobación de benefactor
+ * Crear notificacion de aprobacion de benefactor
  */
 async function notificarAprobacionBenefactor(idBenefactor, aprobado, idAdmin) {
   const client = await pool.connect();
-  
+
   try {
     await client.query('BEGIN');
-    
-    // Obtener datos del benefactor y usuario que lo cargó
+
     const queryBenefactor = `
-      SELECT 
+      SELECT
         b.nombre_completo,
         b.id_usuario,
         u.nombre_usuario
@@ -164,41 +162,39 @@ async function notificarAprobacionBenefactor(idBenefactor, aprobado, idAdmin) {
       JOIN usuarios u ON u.id_usuario = b.id_usuario
       WHERE b.id_benefactor = $1
     `;
-    
+
     const resultBenefactor = await client.query(queryBenefactor, [idBenefactor]);
-    
+
     if (resultBenefactor.rows.length === 0) {
       throw new Error('Benefactor no encontrado');
     }
-    
+
     const benefactor = resultBenefactor.rows[0];
-    
+
     const tipo = 'APROBACION_BENEFACTOR';
-    const titulo = aprobado 
-      ? '✅ Benefactor aprobado' 
-      : '❌ Benefactor rechazado';
+    const titulo = aprobado ? 'Benefactor aprobado' : 'Benefactor rechazado';
     const mensaje = aprobado
       ? `El benefactor ${benefactor.nombre_completo} ha sido aprobado exitosamente.`
       : `El benefactor ${benefactor.nombre_completo} ha sido rechazado.`;
     const link = `/benefactores/${idBenefactor}`;
-    
+
     const queryNotificacion = `
       SELECT crear_notificacion($1, $2, $3, $4, $5) AS id_notificacion
     `;
-    
+
     await client.query(queryNotificacion, [
       benefactor.id_usuario,
       tipo,
       titulo,
       mensaje,
-      link
+      link,
     ]);
-    
+
     await client.query('COMMIT');
-    
+
     return {
-      mensaje: 'Notificación de aprobación creada',
-      usuario_notificado: benefactor.nombre_usuario
+      mensaje: 'Notificacion de aprobacion creada',
+      usuario_notificado: benefactor.nombre_usuario,
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -209,18 +205,18 @@ async function notificarAprobacionBenefactor(idBenefactor, aprobado, idAdmin) {
 }
 
 /**
- * Crear notificación personalizada para usuario
+ * Crear notificacion personalizada para usuario
  */
 async function notificarUsuario(idUsuario, titulo, mensaje, tipo = 'SISTEMA', link = null) {
-  return await crearNotificacion(idUsuario, tipo, titulo, mensaje, link);
+  return crearNotificacion(idUsuario, tipo, titulo, mensaje, link);
 }
 
 /**
- * Notificación broadcast a todos los usuarios con un permiso específico
+ * Notificacion broadcast a todos los usuarios con un permiso especifico
  */
 async function notificarPorPermiso(recurso, permiso, titulo, mensaje, link = null) {
   const client = await pool.connect();
-  
+
   try {
     await client.query('BEGIN');
 
@@ -246,35 +242,35 @@ async function notificarPorPermiso(recurso, permiso, titulo, mensaje, link = nul
       WHERE u.activo = TRUE
         AND COALESCE(p.${columnaPermiso}, FALSE) = TRUE
     `;
-    
+
     const resultUsuarios = await client.query(queryUsuarios);
-    
+
     const notificacionesCreadas = [];
-    
+
     for (const usuario of resultUsuarios.rows) {
       const queryNotificacion = `
         SELECT crear_notificacion($1, 'SISTEMA', $2, $3, $4) AS id_notificacion
       `;
-      
+
       const result = await client.query(queryNotificacion, [
         usuario.id_usuario,
         titulo,
         mensaje,
-        link
+        link,
       ]);
-      
+
       notificacionesCreadas.push({
         usuario: usuario.nombre_usuario,
-        id_notificacion: result.rows[0].id_notificacion
+        id_notificacion: result.rows[0].id_notificacion,
       });
     }
-    
+
     await client.query('COMMIT');
-    
+
     return {
       mensaje: 'Notificaciones broadcast enviadas',
       total: notificacionesCreadas.length,
-      usuarios: notificacionesCreadas
+      usuarios: notificacionesCreadas,
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -285,11 +281,11 @@ async function notificarPorPermiso(recurso, permiso, titulo, mensaje, link = nul
 }
 
 // ==========================================
-// 3. ESTADÍSTICAS DE NOTIFICACIONES
+// 3. ESTADISTICAS DE NOTIFICACIONES
 // ==========================================
 
 /**
- * Obtener estadísticas de notificaciones
+ * Obtener estadisticas de notificaciones
  */
 async function obtenerEstadisticas(idUsuario) {
   const query = `
@@ -304,22 +300,25 @@ async function obtenerEstadisticas(idUsuario) {
     FROM notificaciones
     WHERE id_usuario = $1
   `;
-  
+
   const result = await pool.query(query, [idUsuario]);
   return result.rows[0];
 }
 
 /**
- * Notificar a usuarios con permisos de aprobación sobre casos pendientes
+ * Notificar a usuarios con permisos de aprobacion sobre casos pendientes
  */
 async function notificarCasosPendientes(tipoCaso = 'benefactores') {
   const client = await pool.connect();
-  
+
   try {
     console.log('[Notificaciones] Verificando casos pendientes:', tipoCaso);
-    
-    let tabla, permisoRequerido, nombreCaso, linkBase;
-    
+
+    let tabla;
+    let permisoRequerido;
+    let nombreCaso;
+    let linkBase;
+
     if (tipoCaso === 'benefactores') {
       tabla = 'benefactores';
       permisoRequerido = 'aprobaciones';
@@ -331,26 +330,24 @@ async function notificarCasosPendientes(tipoCaso = 'benefactores') {
       nombreCaso = 'casos sociales';
       linkBase = '/aprobaciones/social';
     } else {
-      throw new Error('Tipo de caso no válido');
+      throw new Error('Tipo de caso no valido');
     }
-    
-    // Contar casos pendientes
+
     const queryCasos = `
       SELECT COUNT(*) AS total
       FROM ${tabla}
       WHERE estado_registro = 'PENDIENTE'
     `;
-    
+
     const resultCasos = await client.query(queryCasos);
-    const totalPendientes = parseInt(resultCasos.rows[0].total);
-    
+    const totalPendientes = parseInt(resultCasos.rows[0].total, 10);
+
     console.log('[Notificaciones] Casos pendientes encontrados:', totalPendientes);
-    
+
     if (totalPendientes === 0) {
       return { mensaje: 'No hay casos pendientes', usuarios_notificados: 0 };
     }
-    
-    // Obtener usuarios con el permiso de aprobación
+
     const queryUsuarios = `
       SELECT DISTINCT u.id_usuario
       FROM usuarios u
@@ -358,32 +355,30 @@ async function notificarCasosPendientes(tipoCaso = 'benefactores') {
       WHERE u.activo = TRUE
         AND COALESCE(p.${permisoRequerido}, FALSE) = TRUE
     `;
-    
+
     const resultUsuarios = await client.query(queryUsuarios);
-    
+
     console.log('[Notificaciones] Usuarios con permisos:', resultUsuarios.rows.length);
-    
-    // Crear notificaciones para cada usuario con permisos
-    const titulo = `📋 Tienes ${totalPendientes} ${nombreCaso} pendientes de aprobación`;
-    const mensaje = `Hay ${totalPendientes} ${nombreCaso} esperando tu revisión.`;
-    
+
+    const titulo = `Tienes ${totalPendientes} ${nombreCaso} pendientes de aprobacion`;
+    const mensaje = `Hay ${totalPendientes} ${nombreCaso} esperando tu revision.`;
+
     let notificacionesCreadas = 0;
-    
+
     for (const usuario of resultUsuarios.rows) {
-      // Verificar que el usuario tenga el permiso específico
       await client.query(
         `SELECT crear_notificacion($1, 'SISTEMA', $2, $3, $4)`,
         [usuario.id_usuario, titulo, mensaje, linkBase]
       );
       notificacionesCreadas++;
     }
-    
+
     console.log('[Notificaciones] Notificaciones creadas:', notificacionesCreadas);
-    
+
     return {
       mensaje: 'Notificaciones enviadas',
       usuarios_notificados: notificacionesCreadas,
-      total_pendientes: totalPendientes
+      total_pendientes: totalPendientes,
     };
   } catch (error) {
     console.error('[Notificaciones] Error al notificar casos pendientes:', error);
@@ -405,5 +400,5 @@ module.exports = {
   notificarUsuario,
   notificarPorPermiso,
   obtenerEstadisticas,
-  notificarCasosPendientes
+  notificarCasosPendientes,
 };
