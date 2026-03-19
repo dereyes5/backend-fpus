@@ -6,3 +6,4 @@ base
 postman_collection.json
 FRONTEND_PROMPT.md
 src/config/permisos.json
+/scripts/output

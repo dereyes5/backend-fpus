@@ -19,6 +19,7 @@ const path = require('path');
 const XLSX = require('xlsx');
 
 const DEFAULT_TIMEOUT_MS = 20000;
+const PREVIEW_SAMPLE_ROWS = 5;
 
 function parseArgs(argv) {
   const args = {};
@@ -39,6 +40,31 @@ function required(name, value) {
   if (!value) {
     throw new Error(`Falta argumento requerido: --${name}`);
   }
+}
+
+function createLogger({ verbose = false, writeLine = null } = {}) {
+  const emit = (level, message, data) => {
+    const suffix = data !== undefined ? ` ${JSON.stringify(data)}` : '';
+    const line = `[preview:${level}] ${message}${suffix}`;
+    console.log(line);
+    if (writeLine) writeLine(line);
+  };
+
+  return {
+    info(message, data) {
+      emit('info', message, data);
+    },
+    warn(message, data) {
+      emit('warn', message, data);
+    },
+    error(message, data) {
+      emit('error', message, data);
+    },
+    debug(message, data) {
+      if (!verbose) return;
+      emit('debug', message, data);
+    },
+  };
 }
 
 async function requestJson(url, options = {}) {
@@ -424,12 +450,25 @@ async function main() {
 
     const baseUrl = String(args.baseUrl).replace(/\/$/, '');
     const excelPath = path.resolve(String(args.excel));
+    const verbose = args.verbose === true || String(args.verbose || '').toLowerCase() === 'true';
+    const outputDir = path.join(__dirname, 'output', `preview-benefactores-${timestampForPath()}`);
+    ensureDir(outputDir);
+    const logFilePath = path.join(outputDir, 'preview.log');
+    const writeLogLine = (line) => fs.appendFileSync(logFilePath, `${line}\n`, 'utf8');
+    const logger = createLogger({ verbose, writeLine: writeLogLine });
+
+    logger.info('Inicio del preview', {
+      baseUrl,
+      excelPath,
+      verbose,
+      outputDir,
+    });
 
     if (!fs.existsSync(excelPath)) {
       throw new Error(`No existe el archivo Excel: ${excelPath}`);
     }
 
-    console.log('1) Login...');
+    logger.info('Paso 1: login');
     const login = await requestJson(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       body: JSON.stringify({
@@ -439,15 +478,22 @@ async function main() {
     });
 
     if (!login.ok || !login.body?.data?.token) {
-      console.error('ERROR login:', login.status, login.body);
+      logger.error('Error en login', {
+        status: login.status,
+        body: login.body,
+      });
       process.exit(1);
     }
 
     const token = login.body.data.token;
     const usuario = login.body.data.usuario || {};
     const authHeaders = { Authorization: `Bearer ${token}` };
+    logger.info('Login exitoso', {
+      id_usuario: usuario.id_usuario || null,
+      nombre_usuario: usuario.nombre_usuario || null,
+    });
 
-    console.log('2) Obteniendo convenio de referencia...');
+    logger.info('Paso 2: obteniendo convenio de referencia');
     const convenioResponse = await requestJson(`${baseUrl}/api/benefactores/convenio/siguiente`, {
       method: 'GET',
       headers: authHeaders,
@@ -468,8 +514,9 @@ async function main() {
     } else {
       convenioInfo.error = convenioResponse.body?.message || 'No se pudo consultar el siguiente convenio';
     }
+    logger.info('Convenio de referencia consultado', convenioInfo);
 
-    console.log('3) Leyendo Excel...');
+    logger.info('Paso 3: leyendo Excel');
     const workbook = XLSX.readFile(excelPath, {
       raw: false,
       cellDates: false,
@@ -482,12 +529,45 @@ async function main() {
     }
 
     const worksheet = workbook.Sheets[firstSheetName];
+    const headerRows = XLSX.utils.sheet_to_json(worksheet, {
+      header: 1,
+      defval: '',
+      raw: false,
+    });
+    const rawHeaders = Array.isArray(headerRows[0]) ? headerRows[0] : [];
+    const normalizedHeaders = rawHeaders.map((header) => ({
+      original: header,
+      normalized: normalizeHeader(header),
+      mapped_to: HEADER_ALIASES.get(normalizeHeader(header)) || null,
+    }));
+    logger.info('Hoja detectada', { hoja: firstSheetName, total_columnas: rawHeaders.length });
+    logger.debug('Encabezados detectados', normalizedHeaders);
+
     const rawRows = XLSX.utils.sheet_to_json(worksheet, {
       defval: '',
       raw: false,
     });
+    logger.info('Filas crudas leidas', { total: rawRows.length });
+    logger.debug('Muestra de filas crudas', rawRows.slice(0, PREVIEW_SAMPLE_ROWS));
 
-    const mappedRows = rawRows.map((row, index) => sanitizeForPayload(mapRowKeys(row), index + 2));
+    const mappedRows = rawRows.map((row, index) => {
+      const mapped = mapRowKeys(row);
+      const sanitized = sanitizeForPayload(mapped, index + 2);
+      if (index < PREVIEW_SAMPLE_ROWS) {
+        logger.debug('Fila transformada', {
+          row_number: index + 2,
+          raw: row,
+          mapped,
+          sanitized,
+        });
+      }
+      return sanitized;
+    });
+    logger.info('Filas transformadas', {
+      total: mappedRows.length,
+      titulares: mappedRows.filter((item) => item.tipo_benefactor === 'TITULAR').length,
+      dependientes: mappedRows.filter((item) => item.tipo_benefactor === 'DEPENDIENTE').length,
+    });
 
     const convenioCount = new Map();
     for (const row of mappedRows) {
@@ -505,8 +585,9 @@ async function main() {
     const reportRows = [];
 
     const expectedPrefix = convenioInfo.iniciales_sucursal || null;
+    logger.debug('Convenios duplicados en archivo', [...duplicatedConvenios]);
 
-    console.log('4) Pasada 1: titulares...');
+    logger.info('Paso 4: pasada de titulares');
     for (const row of mappedRows.filter((item) => item.tipo_benefactor === 'TITULAR')) {
       const { errors, warnings } = buildWarningsAndErrors(row);
       const payload = buildPayload(row);
@@ -539,6 +620,13 @@ async function main() {
 
       reportRows.push(item);
       titularesPreparados.push(item);
+      logger.debug('Titular procesado', {
+        row_number: item.row_number,
+        status: item.status,
+        convenio_excel: item.convenio_excel,
+        errors: item.errors,
+        warnings: item.warnings,
+      });
 
       if (row.cedula) {
         titularesByCedula.set(row.cedula, {
@@ -551,8 +639,9 @@ async function main() {
         });
       }
     }
+    logger.info('Resumen pasada titulares', summarizeRows(titularesPreparados));
 
-    console.log('5) Pasada 2: dependientes...');
+    logger.info('Paso 5: pasada de dependientes');
     for (const row of mappedRows.filter((item) => item.tipo_benefactor === 'DEPENDIENTE')) {
       const { errors, warnings } = buildWarningsAndErrors(row);
       const titular = row.titular_cedula_excel ? titularesByCedula.get(row.titular_cedula_excel) : null;
@@ -599,6 +688,15 @@ async function main() {
 
       reportRows.push(item);
       dependientesPreparados.push(item);
+      logger.debug('Dependiente procesado', {
+        row_number: item.row_number,
+        status: item.status,
+        convenio_excel: item.convenio_excel,
+        titular_cedula_excel: row.titular_cedula_excel,
+        titular_resuelto: Boolean(titular),
+        errors: item.errors,
+        warnings: item.warnings,
+      });
 
       if (titular) {
         asignacionesPreparadas.push({
@@ -618,9 +716,7 @@ async function main() {
         });
       }
     }
-
-    const outputDir = path.join(__dirname, 'output', `preview-benefactores-${timestampForPath()}`);
-    ensureDir(outputDir);
+    logger.info('Resumen pasada dependientes', summarizeRows(dependientesPreparados));
 
     const resumen = {
       archivo_excel: excelPath,
@@ -631,10 +727,12 @@ async function main() {
         cargo: usuario.cargo || null,
       },
       convenio_referencia_backend: convenioInfo,
+      columnas_detectadas: normalizedHeaders,
       resumen_titulares: summarizeRows(titularesPreparados),
       resumen_dependientes: summarizeRows(dependientesPreparados),
       resumen_total: summarizeRows(reportRows),
       generated_at: new Date().toISOString(),
+      log_file: logFilePath,
     };
 
     writeJson(path.join(outputDir, 'payloads_titulares.json'), {
@@ -672,10 +770,23 @@ async function main() {
       }))
     );
 
+    logger.info('Preview generado', {
+      archivo: excelPath,
+      hoja: firstSheetName,
+      salida: outputDir,
+      usuario_autenticado: usuario.nombre_usuario || 'N/A',
+      convenio_referencia_backend: convenioInfo.n_convenio || 'N/A',
+      titulares_preparados: titularesPreparados.length,
+      dependientes_preparados: dependientesPreparados.length,
+      asignaciones_preparadas: asignacionesPreparadas.length,
+      total_filas_analizadas: reportRows.length,
+    });
+
     console.log('\n=== PREVIEW CARGA BENEFATORES ===');
     console.log(`Archivo: ${excelPath}`);
     console.log(`Hoja: ${firstSheetName}`);
     console.log(`Salida: ${outputDir}`);
+    console.log(`Log detallado: ${logFilePath}`);
     console.log(`Usuario autenticado: ${usuario.nombre_usuario || 'N/A'}`);
     console.log(`Convenio referencia backend: ${convenioInfo.n_convenio || 'N/A'}`);
     console.log(`Titulares preparados: ${titularesPreparados.length}`);
