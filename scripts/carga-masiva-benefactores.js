@@ -250,6 +250,21 @@ function detectBenefactoresSheet(workbook) {
   return preferida || workbook.SheetNames[0];
 }
 
+function detectHeaderRowIndex(rows) {
+  for (let index = 0; index < Math.min(rows.length, 20); index += 1) {
+    const row = rows[index] || [];
+    const normalizedCells = row.map((cell) => normalizeHeader(cell));
+    const hasEjecutivo = normalizedCells.includes('EJECUTIVO');
+    const hasConvenio = normalizedCells.includes('N CONVENIO');
+    const hasBenefactor = normalizedCells.includes('BENEFACTOR');
+    if (hasEjecutivo && hasConvenio && hasBenefactor) {
+      return index;
+    }
+  }
+
+  return 0;
+}
+
 function loadExcelRowMap(excelPath, logger) {
   const workbook = XLSX.readFile(excelPath, { cellDates: false });
   const sheetName = detectBenefactoresSheet(workbook);
@@ -269,22 +284,24 @@ function loadExcelRowMap(excelPath, logger) {
     throw new Error('El Excel no contiene filas');
   }
 
-  const headerRow = rows[0];
+  const headerRowIndex = detectHeaderRowIndex(rows);
+  const headerRow = rows[headerRowIndex] || [];
   const mappedHeaders = headerRow.map((header) => {
     const normalized = normalizeHeader(header);
     return EXEC_HEADER_ALIASES.get(normalized) || normalized.toLowerCase();
   });
 
   const rowMap = new Map();
-  for (let index = 1; index < rows.length; index += 1) {
+  for (let index = headerRowIndex + 1; index < rows.length; index += 1) {
     const values = rows[index];
-    const rowNumber = index + 1;
-    const obj = { row_number: rowNumber };
+    const rowNumber = index - headerRowIndex + 1;
+    const obj = { row_number: rowNumber, excel_row_number: index + 1 };
     mappedHeaders.forEach((key, idx) => {
       obj[key] = values[idx];
     });
     rowMap.set(rowNumber, {
       row_number: rowNumber,
+      excel_row_number: index + 1,
       ejecutivo: normalizeUpper(obj.ejecutivo),
       convenio_excel: normalizeUpper(obj.n_convenio),
       convenio_prefix: extractConvenioPrefix(obj.n_convenio),
@@ -296,6 +313,7 @@ function loadExcelRowMap(excelPath, logger) {
 
   logger.info('Excel cargado para metadata de ejecucion', {
     hoja: sheetName,
+    header_row_excel: headerRowIndex + 1,
     filas: rowMap.size,
   });
 
