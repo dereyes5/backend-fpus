@@ -1,7 +1,7 @@
 {
   "name": "backend-benefactores",
   "version": "1.0.0",
-  "description": "API REST para gestión de benefactores con autenticación JWT",
+  "description": "API REST para gestion de benefactores con autenticacion JWT",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -10,6 +10,7 @@
     "test:connection": "node scripts/test-connection.js",
     "diag:preview": "node scripts/diagnostico-validar-preview.js",
     "preview:benefactores": "node scripts/preview-carga-benefactores.js",
+    "load:benefactores": "node scripts/carga-masiva-benefactores.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
