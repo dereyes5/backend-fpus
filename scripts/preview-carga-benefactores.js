@@ -133,6 +133,13 @@ function normalizeUpperNullableString(value) {
   return normalized ? stripAccents(normalized).toUpperCase() : null;
 }
 
+function normalizeTipoAfiliacion(value) {
+  const normalized = normalizeUpperNullableString(value);
+  if (!normalized) return null;
+  if (normalized === 'CORPORATIVA') return 'CORPORATIVO';
+  return normalized;
+}
+
 function normalizeEmail(value) {
   const normalized = normalizeNullableString(value);
   if (!normalized) return null;
@@ -391,7 +398,7 @@ function buildPayload(row) {
 
 function sanitizeForPayload(rawRow, rowNumber) {
   const tipoBenefactor = resolveTipoBenefactor(rawRow);
-  const tipoAfiliacion = normalizeUpperNullableString(rawRow.tipo_afiliacion);
+  const tipoAfiliacion = normalizeTipoAfiliacion(rawRow.tipo_afiliacion);
   const cuentaBancaria =
     normalizeNullableString(rawRow.cuenta_bancaria) ||
     normalizeNullableString(rawRow.num_cuenta_tc);

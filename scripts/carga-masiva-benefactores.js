@@ -85,6 +85,28 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
 }
 
+function csvEscape(value) {
+  const normalized = value === undefined || value === null ? '' : String(value);
+  if (/[",\n]/.test(normalized)) {
+    return `"${normalized.replace(/"/g, '""')}"`;
+  }
+  return normalized;
+}
+
+function writeCsv(filePath, rows) {
+  if (!rows.length) {
+    fs.writeFileSync(filePath, '', 'utf8');
+    return;
+  }
+
+  const headers = Object.keys(rows[0]);
+  const lines = [headers.map(csvEscape).join(',')];
+  for (const row of rows) {
+    lines.push(headers.map((header) => csvEscape(row[header])).join(','));
+  }
+  fs.writeFileSync(filePath, `${lines.join('\n')}\n`, 'utf8');
+}
+
 function stripAccents(value) {
   return String(value || '')
     .normalize('NFD')
@@ -379,7 +401,10 @@ function buildPreflight({ titulares, dependientes, asignaciones, ignoreBlocked =
 
   const executives = collectExecutives(allRows);
   const executivesWithMultiplePrefixes = executives
-    .filter((item) => item.convenio_prefixes.length > 1)
+    .filter((item) =>
+      item.convenio_prefixes.length > 1 &&
+      normalizeUpper(item.ejecutivo_excel) !== normalizeUpper(KEEPER_USER)
+    )
     .map((item) => ({
       ejecutivo: item.ejecutivo_excel,
       convenio_prefixes: item.convenio_prefixes,
@@ -863,6 +888,25 @@ async function main() {
     })),
   };
   writeJson(path.join(outputDir, 'preflight-report.json'), preflightReport);
+  writeCsv(
+    path.join(outputDir, 'blocked_rows_resumen.csv'),
+    preflight.blockedRows.map((row) => ({
+      row_number: row.row_number,
+      ejecutivo: row.ejecutivo || '',
+      tipo_benefactor: row.tipo_benefactor || '',
+      nombre_completo: row.nombre_completo || '',
+      cedula: row.cedula || '',
+      convenio_excel: row.convenio_excel || '',
+      convenio_prefix: row.convenio_prefix || '',
+      status: row.status || '',
+      errors: Array.isArray(row.errors) ? row.errors.join('|') : '',
+      warnings: Array.isArray(row.warnings) ? row.warnings.join('|') : '',
+      titular_cedula_excel: row?.correlacion?.titular_cedula_excel || '',
+      titular_nombre_excel: row?.correlacion?.titular_nombre_excel || '',
+      titular_row_number: row?.dependencia_previa?.titular_row_number || '',
+      titular_convenio_excel: row?.dependencia_previa?.titular_convenio_excel || '',
+    }))
+  );
 
   logger.info('Preflight completado', {
     titulares: preflight.resumen.titulares,
