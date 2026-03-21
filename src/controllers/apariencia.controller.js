@@ -109,7 +109,7 @@ const removeImageIfExists = (filename) => {
 
 const buildFileUrl = (req, filename) => {
   if (!filename) return null;
-  return `${req.protocol}://${req.get('host')}/api/apariencia/archivo/${encodeURIComponent(filename)}`;
+  return `/api/apariencia/archivo/${encodeURIComponent(filename)}`;
 };
 
 const buildResponseData = (req, config) => {
@@ -378,4 +378,3 @@ module.exports = {
   obtenerArchivo,
   APARIENCIA_DIR,
 };
-
